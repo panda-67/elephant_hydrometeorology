@@ -1,0 +1,19 @@
+name: geo-forensic-env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - earthengine-api
+  - geemap
+  - google-api-python-client
+  - pycryptodome
+  - requests
+  - pandas
+  - numpy
+  - scipy
+  - scikit-learn
+  - geopandas
+  - shapely
+  - python-dotenv
+  - pydantic
+  - pydantic-settings

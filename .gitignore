@@ -1,0 +1,86 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+.env
+
+# Micromamba / Conda
+.conda/
+conda-meta/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Earth Engine Credentials
+.ee/
+credentials
+*.json
+
+# Local Configuration
+config/local.yaml
+config/*.local.yaml
+
+# Data
+data/01_raw/*
+data/02_intermediate/*
+data/03_processed/*
+data/04_outputs/*
+
+# Keep folder structure
+!data/.gitkeep
+!data/01_raw/.gitkeep
+!data/02_intermediate/.gitkeep
+!data/03_processed/.gitkeep
+!data/04_outputs/.gitkeep
+
+# Exports
+*.tif
+*.tiff
+*.img
+*.html
+*.vrt
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.gpkg
+*.geojson
+*.csv
+*.xlsx
+
+# Statistics Outputs
+outputs/
+reports/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Temporary
+tmp/
+temp/
+.cache/
