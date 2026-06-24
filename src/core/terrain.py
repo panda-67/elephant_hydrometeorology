@@ -1,17 +1,18 @@
 import ee
+from config import config
 
 
 class TerrainAnalyzer:
     """Analisis topografi berbasis DEM."""
 
-    def __init__(self, roi: ee.Geometry, use_demnas: bool = False):
+    def __init__(self, roi: ee.Geometry):
         self.roi = roi
-        self.use_demnas = use_demnas
+        self.use_demnas = getattr(config, "USE_DEMNAS", False)
 
-        if use_demnas:
+        if self.use_demnas:
             self.dem = (
                 ee.Image("users/nandadata02/DEMNAS-ACEH")
-                .filterBounds(self.roi)
+                .clip(self.roi)
                 .select(["b1"], ["elevation"])
             )
         else:

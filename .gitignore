@@ -53,6 +53,7 @@ data/04_outputs/*
 # Exports
 *.tif
 *.tiff
+*.bk
 *.img
 *.html
 *.vrt
@@ -64,6 +65,7 @@ data/04_outputs/*
 *.gpkg
 *.geojson
 *.csv
+*.xml
 *.xlsx
 
 # Statistics Outputs
@@ -73,6 +75,7 @@ reports/
 # Testing
 .pytest_cache/
 .coverage
+test.py
 htmlcov/
 
 # Build

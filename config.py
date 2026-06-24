@@ -30,19 +30,20 @@ class GEEConfig(BaseSettings):
     F_POST_EVENT_START: str = "2025-12-16"
     F_POST_EVENT_END: str = "2026-01-15"
 
-    # Ambang Batas Saintifik (Thresholds)
-    CLOUD_PROB_THRESHOLD: int = 35
-    NDVI_DEGRADATION_THRESHOLD: float = -0.1
-    SATELLITE_MODE: str = "landsat"  # sentinel1, sentinel2, landsat
-
     # Parameter Hidrologi (Skenario Curah Hujan Ekstrem Batas Atas)
     PEAK_RAINFALL_MM_DAY: float = 122.00
 
+    # Ambang Batas Saintifik (Thresholds)
+    CLOUD_PROB_THRESHOLD: int = 35
+    NDVI_DEGRADATION_THRESHOLD: float = -0.1
+    SATELLITE_MODE: str = "sentinel2"  # sentinel1, sentinel2, landsat
+    USE_DEMNAS: bool = False
+
     das_pidie_plus: List[Tuple[float, float]] = [
-        (95.8514831, 5.1869573),  # Lhok Keutapang, Tangse
+        # (95.8514831, 5.1869573),  # Lhok Keutapang, Tangse
+        (96.0849351, 5.2044313),  # Sarah Panyang
         (95.9369891, 5.1533933),  # Tiro, Pidie
         (95.9794531, 5.2757963),  # Beureunuen
-        (96.0849351, 5.2044313),  # Sarah Panyang
         (96.1381043, 5.2735685),  # Pante Raja
         (96.1813460, 5.2591846),  # Trienggadeng
         (96.2216408, 5.2411777),  # Kuta Trieng
@@ -50,14 +51,13 @@ class GEEConfig(BaseSettings):
 
     das_meureudu: List[Tuple[float, float]] = [
         # (96.0638381, 5.2023043),  # Meunasah Jijiem, Bandar Baru
-        # (95.8514831, 5.1869573),  # Lhok Keutapang, Tangse
         (96.2547393, 5.2314908),  # Meureudu
         (96.2025621, 5.0877253),  # Hutan Meureudu
         (96.2359233, 4.9971973),  # Huta Meureudu Atas
     ]
 
     # Jangkar Titik Koordinat Outlet (8 Sistem DAS Hasil Kalibrasi Hulu)
-    OUTLET_COORDINATES: List[Tuple[float, float]] = das_meureudu
+    OUTLET_COORDINATES: List[Tuple[float, float]] = das_meureudu + das_pidie_plus
 
     # Menggunakan SettingsConfigDict bawaan Pydantic v2 untuk melonggarkan pembacaan .env
     model_config = SettingsConfigDict(

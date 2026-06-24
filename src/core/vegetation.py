@@ -37,7 +37,7 @@ class VegetationAnalyzer:
                 .filterBounds(self.roi)
                 .filterDate(start_date, end_date)
                 .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", cloud_threshold))
-                # .map(advanced_mask)  # Hilangkan komen jika ingin mengaktifkan masker
+                .map(advanced_mask)  # Hilangkan komen jika ingin mengaktifkan masker
             )
 
         # =====================================================================

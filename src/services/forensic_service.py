@@ -43,7 +43,7 @@ class ForensicAnalysisService:
     def __init__(self):
         self.engine = GEEEngine()
         self.roi = self.engine.get_hydro_roi()
-        self.ta = TerrainAnalyzer(self.roi, use_demnas=False)
+        self.ta = TerrainAnalyzer(self.roi)
 
     def _safe_get_raw_metric(
         self, raw_stats: dict, key: str, default: Optional[float] = None
