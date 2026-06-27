@@ -12,6 +12,10 @@ dependencies:
   - numpy
   - scipy
   - scikit-learn
+  - scikit-image
+  - whitebox
+  - whiteboxgui
+  - rasterio
   - geopandas
   - shapely
   - python-dotenv
