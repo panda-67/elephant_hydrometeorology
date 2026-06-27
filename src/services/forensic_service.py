@@ -489,7 +489,7 @@ REVISED ATTRIBUTION (accounting for above):
     - Peak rainfall intensity: ~10-20% contribution
 
 This cascade of factors explains how seemingly modest spatial
-average increases (~3%) combine to trigger flash flood conditions
+average increases (~{round(m["runoff_increase_pct"]):.0f}%) combine to trigger flash flood conditions
 when acting together at the watershed outlet.
 
 ═══════════════════════════════════════════════════════════════

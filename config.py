@@ -36,7 +36,7 @@ class GEEConfig(BaseSettings):
     # Ambang Batas Saintifik (Thresholds)
     CLOUD_PROB_THRESHOLD: int = 35
     NDVI_DEGRADATION_THRESHOLD: float = -0.1
-    SATELLITE_MODE: str = "sentinel2"  # sentinel1, sentinel2, landsat
+    SATELLITE_MODE: str = "sentinel1"  # sentinel1, sentinel2, landsat
     USE_DEMNAS: bool = False
 
     das_pidie_plus: List[Tuple[float, float]] = [
@@ -56,7 +56,8 @@ class GEEConfig(BaseSettings):
         (96.2359233, 4.9971973),  # Huta Meureudu Atas
     ]
 
-    # Jangkar Titik Koordinat Outlet (8 Sistem DAS Hasil Kalibrasi Hulu)
+    # Koordinat yang akan digunakan untuk pengenalan hydrosheds dari database
+    # WWF/HydroSHEDS/v1/Basins/hybas_12
     OUTLET_COORDINATES: List[Tuple[float, float]] = das_meureudu + das_pidie_plus
 
     # Menggunakan SettingsConfigDict bawaan Pydantic v2 untuk melonggarkan pembacaan .env
