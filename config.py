@@ -20,14 +20,14 @@ class GEEConfig(BaseSettings):
 
     # 2. Pre-Event Fase (Akumulasi Degradasi Lahan)
     F_PRE_EVENT_START: str = "2025-07-01"
-    F_PRE_EVENT_END: str = "2025-11-20"
+    F_PRE_EVENT_END: str = "2025-10-31"
 
     # 3. Flood Event Fase (Puncak Hujan & Simulasi Limpasan)
-    F_FLOOD_EVENT_START: str = "2025-11-21"
-    F_FLOOD_EVENT_END: str = "2025-12-15"
+    F_FLOOD_EVENT_START: str = "2025-11-01"
+    F_FLOOD_EVENT_END: str = "2025-11-30"
 
     # 4. Post-Event Fase (Genangan Hilir & Sedimen)
-    F_POST_EVENT_START: str = "2025-12-16"
+    F_POST_EVENT_START: str = "2025-12-01"
     F_POST_EVENT_END: str = "2026-01-15"
 
     # Parameter Hidrologi (Skenario Curah Hujan Ekstrem Batas Atas)
@@ -36,7 +36,7 @@ class GEEConfig(BaseSettings):
     # Ambang Batas Saintifik (Thresholds)
     CLOUD_PROB_THRESHOLD: int = 35
     NDVI_DEGRADATION_THRESHOLD: float = -0.1
-    SATELLITE_MODE: str = "sentinel1"  # sentinel1, sentinel2, landsat
+    SATELLITE_MODE: str = "sentinel2"  # sentinel1, sentinel2, landsat
     USE_DEMNAS: bool = False
 
     das_pidie_plus: List[Tuple[float, float]] = [

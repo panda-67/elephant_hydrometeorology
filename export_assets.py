@@ -13,10 +13,10 @@ def main():
     Dedicated entry point untuk trigger asynchronous raster export ke Google Drive.
     Memisahkan komputasi raster yang berat dari script metrics main.py.
     """
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 80)
     # Menandakan inisialisasi pipeline ekspor aset spasial
     print("      INITIALIZING GEO-FORENSIC RASTER ASSET EXPORT PIPELINE")
-    print("=" * 70)
+    print("=" * 80)
     print(
         f"\n[•] Export pipeline started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     )
@@ -72,9 +72,9 @@ def main():
                 "\n[STAGE 3] Skip Polling: Semua asset langsung diunduh ke folder lokal lokal 'data/output_raster/'."
             )
 
-        print("\n" + "=" * 70)
+        print("\n" + "=" * 80)
         print("  ✓ RASTER ASSET EXPORT PROCESS COMPLETED")
-        print("=" * 70)
+        print("=" * 80)
 
         print("\n[PRO-TIPS FOR QGIS INTERACTION]")
         print(
@@ -87,7 +87,7 @@ def main():
         print(
             "     layer 'runoff_net_increase' atau 'critical_upstream_deforestation'."
         )
-        print("=" * 70 + "\n")
+        print("=" * 80 + "\n")
 
         return 0
 

@@ -119,9 +119,9 @@ class ExportAssetsService:
         task_ids = []
         folder_dest = "GeoForensic_Tangse_Meureudu"
 
-        print("\n" + "=" * 60)
+        print("\n" + "=" * 80)
         print("[~] RUNNING SMART EXPORT SERVICE (LOCAL FIRST -> DRIVE FALLBACK)")
-        print("=" * 60)
+        print("=" * 80)
 
         p1_img, p2_img, p3_img, p4_img = pipelines
 
@@ -209,7 +209,7 @@ class ExportAssetsService:
             if res != "LOCAL_SUCCESS":
                 task_ids.append(res)
 
-        print("\n" + "=" * 60)
+        print("\n" + "=" * 80)
         print("[✓] Pemrosesan inisiasi ekspor selesai.")
         if task_ids:
             print(
@@ -219,6 +219,6 @@ class ExportAssetsService:
             print(
                 "[INFO] Semua layer berhasil didownload langsung ke lokal! Tidak ada task di Google Drive."
             )
-        print("=" * 60)
+        print("=" * 80)
 
         return task_ids
