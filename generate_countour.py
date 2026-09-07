@@ -10,14 +10,14 @@ def main():
 
     roi = GEEEngine().get_hydro_roi()
 
-    roi = ee.Geometry.Rectangle(
-        [
-            95.9309441,  # xmin
-            5.1627393,  # ymin
-            96.0238261,  # xmax
-            5.2452833,  # ymax
-        ]
-    )
+    # roi = ee.Geometry.Rectangle(
+    #     [
+    #         95.9309441,  # xmin
+    #         5.1627393,  # ymin
+    #         96.0238261,  # xmax
+    #         5.2452833,  # ymax
+    #     ]
+    # )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -25,7 +25,7 @@ def main():
 
     topo = TopographyService(roi=roi, output_dir=output_dir)
 
-    outputs = topo.run(contour_interval=5)
+    outputs = topo.run(contour_interval=10)
 
     print("\nGenerated Files:")
 

@@ -17,7 +17,7 @@ class TerrainAnalyzer:
             )
         else:
             col = (
-                ee.ImageCollection("COPERNICUS/DEM/GLO30")
+                ee.ImageCollection("COPERNICUS/DEM/GLO30_2024_1")
                 .filterBounds(self.roi)
                 .select("DEM")
             )
