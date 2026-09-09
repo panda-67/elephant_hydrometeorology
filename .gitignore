@@ -66,6 +66,7 @@ data/04_outputs/*
 *.geojson
 *.csv
 *.xml
+*.html
 *.xlsx
 
 # Statistics Outputs

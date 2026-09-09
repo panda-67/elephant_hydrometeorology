@@ -1,9 +1,11 @@
+import io
 import os
 import zipfile
-import io
-import requests
-import ee
 from datetime import datetime
+
+import ee
+import requests
+
 from config import config
 
 
@@ -124,6 +126,7 @@ class ExportAssetsService:
         print("=" * 80)
 
         p1_img, p2_img, p3_img, p4_img = pipelines
+        p1_img = False
 
         # ------------------------------------------------------------------------
         # 1. Pipeline 1: Satellites Metrics
@@ -199,11 +202,23 @@ class ExportAssetsService:
         # 4. Pipeline 4: Spatial Causal Matrix
         # ------------------------------------------------------------------------
         if p4_img:
+            p4_export = p4_img.select(
+                [
+                    "d_NDVI_degradation",  # CAUSE: akumulasi tekanan hulu (pra-bencana)
+                    "d_NDVI_destruction",  # EFFECT: hantaman fisik saat bencana
+                    "ndvi_net_loss",
+                    "disturbance_shift",
+                    "compound_hotspot",  # zona krisis (degradasi + destruksi vegetasi)
+                    "runoff_increase_resampled",  # BUKTI HIDROLOGIS independen dari P2
+                    "causal_evidence_tier",  # skor 0-4: makin tinggi, makin kuat bukti gabungan
+                    "hydro_confirmed_hotspot",  # bukti PALING KUAT: NDVI + limpasan sama2 konfirmasi
+                ]
+            )
             res = self._smart_export_image(
-                p4_img,
+                p4_export,
                 "P4 Spatial Causal Matrix",
                 "p4_spatial_causal_matrix",
-                scale_s2 if self.use_demnas else scale_terrain,
+                scale_s2,  # <- selalu pakai resolusi Sentinel-2 (10m), bukan tergantung DEMNAS
                 folder_dest,
             )
             if res != "LOCAL_SUCCESS":

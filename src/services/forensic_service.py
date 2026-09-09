@@ -2,6 +2,7 @@ import json
 import os
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
+
 import ee
 
 from src.core.engine import GEEEngine
@@ -101,7 +102,7 @@ class ForensicAnalysisService:
         p1 = GajahSatellitePipeline(self.roi).execute()
         p2 = GajahHydrologyPipeline(self.roi).execute()
         p3 = MeureuduUpstreamPipeline(self.roi).execute()
-        p4 = SpatialCausalPipeline(p1, p2).execute()
+        p4 = SpatialCausalPipeline(p1, p2, self.roi).execute()
         return p1, p2, p3, p4
 
     def execute_geospatial_reduction(

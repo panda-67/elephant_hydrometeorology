@@ -1,8 +1,8 @@
-import requests
-from skimage.graph import route_through_array
-import rasterio
-from shapely.geometry import shape, LineString
 import ee
+import rasterio
+import requests
+from shapely.geometry import LineString, shape
+from skimage.graph import route_through_array
 
 
 class TransectGenerator:

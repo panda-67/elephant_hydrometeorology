@@ -1,4 +1,5 @@
 import ee
+
 from config import config
 
 
@@ -65,6 +66,14 @@ class HydrologyModeler:
             .select("precipitation")
         )
 
+        count = chirps.size().getInfo()
+        if count == 0:
+            print(
+                f"⚠️ CHIRPS kosong untuk {start_date}–{end_date}, pakai fallback statis {self.rainfall_mm}mm"
+            )
+
+            return ee.Image.constant(self.rainfall_mm).clip(self.roi)
+
         # Mengambil nilai curah hujan harian tertinggi yang terjadi dalam rentang waktu tersebut
         peak_rainfall_img = chirps.reduce(ee.Reducer.max())
 
@@ -90,9 +99,8 @@ class HydrologyModeler:
         Rumus: Q = (P - Ia)² / (P + 0.8S) jika P > Ia, else Q = 0
         """
 
-        # BARIS DIUBAH: Tidak lagi menggunakan ee.Image.constant dari config
         s = self.potential_retention(cn_image)
-        ia = s.multiply(0.2)
+        ia = self.initial_abstraction(cn_image)
 
         # Rumus pembagi TR-55: P - Ia + S = P - 0.2S + S = P + 0.8S
         numerator = rainfall_image.subtract(ia).pow(2)

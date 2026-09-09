@@ -1,7 +1,8 @@
-from pathlib import Path
 import subprocess
-import requests
+from pathlib import Path
+
 import ee
+import requests
 
 
 class TopographyService:
