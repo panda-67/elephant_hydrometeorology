@@ -1,9 +1,12 @@
+import csv
+import json
 import os
+from datetime import datetime
+from typing import Optional
+
 import ee
 import geemap
-import json
-from typing import Optional
-from datetime import datetime
+
 from config import config
 
 
@@ -137,3 +140,158 @@ class GEEEngine:
             if k == key or k.endswith("_" + key):
                 return v
         return None
+
+    def tier_report(
+        ee_result: dict,
+        output_dir: str,
+        title: str = "Distribusi Luas per Tier Bukti Kausal",
+    ) -> str:
+        """
+        Menampilkan distribusi luas per tier dan menyimpannya sebagai CSV.
+
+        Parameters
+        ----------
+        ee_result : dict
+            Hasil .getInfo() dari reduceRegion(
+            Reducer.sum().group()
+            ).
+            Format:
+            {
+                "groups": [
+                    {"tier": int, "sum": float},
+                    ...
+                ]
+            }
+
+        output_dir : str
+            Direktori penyimpanan CSV.
+
+        title : str
+            Judul laporan yang ditampilkan di terminal.
+
+        Returns
+        -------
+        str
+            Path file CSV yang dihasilkan.
+        """
+
+        TIER_LABELS = {
+            0: "Tidak ada perubahan signifikan",
+            1: "Degradasi vegetasi (pra-bencana)",
+            2: "Destruksi fisik (saat bencana)",
+            3: "Area kritis (compound hotspot)",
+            4: "Terkonfirmasi hidrologis (hotspot utama)",
+        }
+
+        # Urutkan berdasarkan tier
+        groups = sorted(
+            ee_result.get("groups", []),
+            key=lambda g: g["tier"],
+        )
+
+        # Total luas
+        total = sum(float(g["sum"]) for g in groups)
+
+        # ============================================================
+        # 1. PRINT REPORT
+        # ============================================================
+
+        col_tier = 6
+        col_label = 42
+        col_luas = 16
+        col_pct = 10
+        width = col_tier + col_label + col_luas + col_pct
+
+        print()
+        print(title)
+        print("=" * width)
+
+        print(
+            f"{'Tier':<{col_tier}}"
+            f"{'Kategori':<{col_label}}"
+            f"{'Luas (ha)':>{col_luas}}"
+            f"{'Persen':>{col_pct}}"
+        )
+
+        print("-" * width)
+
+        for g in groups:
+            tier = int(g["tier"])
+            luas = float(g["sum"])
+            pct = luas / total * 100 if total else 0
+
+            label = TIER_LABELS.get(
+                tier,
+                f"Tier {tier} (tidak dikenal)",
+            )
+
+            print(
+                f"{tier:<{col_tier}}"
+                f"{label:<{col_label}}"
+                f"{luas:>{col_luas},.2f}"
+                f"{pct:>{col_pct - 1}.2f}%"
+            )
+
+        print("-" * width)
+
+        print(
+            f"{'':<{col_tier}}"
+            f"{'TOTAL ROI':<{col_label}}"
+            f"{total:>{col_luas},.2f}"
+            f"{100:>{col_pct - 1}.2f}%"
+        )
+
+        print("=" * width)
+        print()
+
+        # ============================================================
+        # 2. EXPORT CSV
+        # ============================================================
+
+        os.makedirs(
+            output_dir,
+            exist_ok=True,
+        )
+
+        output_file = os.path.join(
+            output_dir,
+            "tier_area.csv",
+        )
+
+        with open(
+            output_file,
+            "w",
+            newline="",
+            encoding="utf-8",
+        ) as f:
+            writer = csv.writer(f)
+
+            writer.writerow(
+                [
+                    "tier",
+                    "kategori",
+                    "luas_ha",
+                    "persen",
+                ]
+            )
+
+            for g in groups:
+                tier = int(g["tier"])
+                luas = float(g["sum"])
+                persen = luas / total * 100 if total else 0
+
+                writer.writerow(
+                    [
+                        tier,
+                        TIER_LABELS.get(
+                            tier,
+                            f"Tier {tier} (tidak dikenal)",
+                        ),
+                        luas,
+                        persen,
+                    ]
+                )
+
+        print(f"CSV saved to: {output_file}")
+
+        return output_file

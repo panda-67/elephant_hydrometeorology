@@ -61,6 +61,8 @@ data/04_outputs/*
 *.shx
 *.dbf
 *.prj
+*.pdf
+*.png
 *.cpg
 *.gpkg
 *.geojson
