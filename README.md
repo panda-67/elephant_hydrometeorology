@@ -34,22 +34,33 @@ _fallback_ (100% data empiris server-side) dengan pembagian lini masa ilmiah:
 ## 📂 Struktur Repositori
 
 ```text
-geo_forensic_corridor/
+elephant_hydrometeorology
 ├── data/
-│   └── output_metrics/   # Output otomatis laporan JSON & berkas spasial QGIS
+│   ├── output_metrics/   # Output otomatis laporan JSON & berkas spasial QGIS
+│   ├── output_rasters/
+│   ├── output_topography/
+│   └── output_vectors/
 ├── src/
+│   ├── R/
+│   │   └── plot.R        # Membuat grafik dari hasil pipeline 4
 │   ├── core/
 │   │   ├── engine.py     # Manajemen otentikasi GEE, ROI, & utilitas ekstraksi
 │   │   ├── hydrology.py  # Pemodelan hidrologi SCS-CN dengan input CHIRPS dinamis
 │   │   ├── landcover.py
 │   │   ├── terrain.py
 │   │   └── vegatation.py
-│   └── pipelines/
-│       ├── p1_gajah_satellite.py
-│       ├── p2_gajah_hydrology.py
-│       ├── p3_meureudu_upstream.py
-│       └── p4_causal_modeling.py
+│   ├── pipelines/
+│   │   ├── p1_gajah_satellite.py
+│   │   ├── p2_gajah_hydrology.py
+│   │   ├── p3_meureudu_upstream.py
+│   │   └── p4_causal_modeling.py
+│   └── services/
+│       ├── export_service.py
+│       ├── forensic_service.py
+│       ├── topography_service.py
+│       └── transect_service.py
 ├── config.py             # Konfigurasi terpusat parameter tanggal & batas watershed
+├── count_tier_area.py
 ├── environment.yml
 ├── export_assets.py
 ├── generate_countour.py

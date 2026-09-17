@@ -357,14 +357,15 @@ class ForensicAnalysisService:
             m (Dict[str, Any]): Parsed metrics dari parse_and_validate_metrics()
             raw (Dict[str, Any]): Raw stats dari execute_geospatial_reduction()
         """
+
         report_string = f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║          GEO-FORENSIC WATERSHED ATTRIBUTION REPORT           ║
 ╚══════════════════════════════════════════════════════════════╝
-
+ 
 DAS Area                     : {m["roi_total_area_ha"]:,.0f} ha
 Observation Period           : {m["timeline_years"]:.2f} years
-
+ 
 ═══════════════════════════════════════════════════════════════
 1. WATERSHED PHYSIOGRAPHY
 ═══════════════════════════════════════════════════════════════
@@ -451,48 +452,126 @@ Hydrologic Amplification     : +{m["runoff_increase_pct"]:.2f} %
 
 Peak Rainfall Trigger        : {m["peak_rain"]:.2f} mm/day
 
-Inference:
-Pre-event forest degradation ({m["forest_loss_pct"]:.2f}% loss)
-likely increased watershed runoff response (+{m["runoff_increase_pct"]:.2f}%)
-during the November 2025 flood event, followed by measurable
-vegetation destruction (ΔNDVI = {m["mean_ndvi_loss"]:.4f}).
-
-⚠️  CAVEAT - RUNOFF UNDERESTIMATION:
+PRIMARY FINDING:
+Pre-event forest loss ({m["forest_loss_ha"]:,.0f} ha, {m["forest_loss_pct"]:.2f}%) coincides with 
+modeled runoff increase (+{m["runoff_increase_pct"]:.2f}%) during the November 2025 flood event, 
+followed by measurable vegetation destruction (ΔNDVI = {m["mean_ndvi_loss"]:.4f}). 
+This spatial-temporal alignment provides evidence consistent with 
+deforestation amplifying hydrological response.
+ 
 ═══════════════════════════════════════════════════════════════
-The reported +{m["runoff_increase_pct"]:.2f}% runoff increase is a SPATIAL AVERAGE
-across the entire watershed. Actual peak discharge amplification
-at the main channel outlet is likely 3-5x HIGHER due to:
-
-  1. CONCENTRATION FLOW: The {m["critical_slope_deforestation_area"]:,.0f} ha of
-     deforestation on steep slopes (>15°) generates rapid runoff
-     that concentrates into channels → peak discharge spikes are
-     nonlinearly amplified compared to spatial average.
-
-  2. SOIL SATURATION (AMC-III): November 2025 is monsoon peak
-     (wet season). Pre-existing moisture saturation from prior
-     rainfall increases actual CN by 20-30% compared to static
-     baseline CN values used in SCS-CN model.
-
-  3. TIME CONCENTRATION: Steeper slopes (mean {m["mean_slope"]:.1f}°) after
-     deforestitation reduce runoff travel time from 5-6 hours
-     to 2-3 hours → narrower, higher hydrograph peak.
-
-  4. HYDROLOGICAL ROUTING: This analysis uses spatial averaging
-     reducers (mean, max per pixel) rather than kinematic routing
-     that would track water convergence to outlets.
-
-REVISED ATTRIBUTION (accounting for above):
-  • Spatial average runoff increase: +{m["runoff_increase_pct"]:.2f}%
-  • Estimated peak discharge increase: +15-40% (conservative)
-  • Contributing factors weighted:
-    - Deforestation: ~40-50% contribution
-    - Soil saturation: ~30-40% contribution
-    - Peak rainfall intensity: ~10-20% contribution
-
-This cascade of factors explains how seemingly modest spatial
-average increases (~{round(m["runoff_increase_pct"]):.0f}%) combine to trigger flash flood conditions
-when acting together at the watershed outlet.
-
+7. METHODOLOGICAL LIMITATIONS & UNCERTAINTIES
+═══════════════════════════════════════════════════════════════
+ 
+a) SPATIAL AVERAGING vs PEAK DISCHARGE:
+   The reported +{m["runoff_increase_pct"]:.2f}% is a watershed-wide spatial average (mean 
+   pixel value). Peak discharge at the outlet may differ significantly 
+   because:
+   
+   • Concentration flow: Runoff from steep slopes ({m["critical_slope_deforestation_area"]:,.0f} ha with 
+     slope >15°) converges rapidly into channels, potentially 
+     amplifying local discharge rates nonlinearly.
+   
+   • Time-of-concentration: Deforestation reduces infiltration and 
+     roughness, shortening travel time of flow from upland areas 
+     to the main channel. This can narrow and steepen the discharge 
+     hydrograph at peak times.
+   
+   • Catchment response: Spatial averaging obscures heterogeneous 
+     response; areas with maximum forest loss may generate 2-4x 
+     higher runoff than areas with minimal change.
+ 
+b) SOIL MOISTURE STATE (Antecedent Moisture Condition — AMC):
+   • The SCS-CN model baseline assumes moderate antecedent moisture 
+     (AMC-II). November 2025 is peak monsoon season in Aceh; 
+     pre-existing soil saturation from prior rainfall likely elevates 
+     actual CN by 15-25 percentage points compared to baseline 
+     (literature range for tropical monsoon: Ponce & Hawkins 1996).
+   
+   • This implies actual runoff during the flood event may have been 
+     higher than modeled, making the +{m["runoff_increase_pct"]:.2f}% estimate conservative.
+ 
+c) STATIC vs DYNAMIC CN:
+   • Curve Number is treated as static per land cover class (ESA 
+     WorldCover 2020 baseline, Dynamic World 2025 preevent). 
+     Inter-annual soil degradation (increased compaction, reduced 
+     organic matter) is not explicitly captured, only via land cover 
+     transition.
+ 
+d) MODEL CHOICE (SCS-CN vs PROCESS-BASED):
+   • SCS-CN (TR-55) is empirically calibrated, primarily for 
+     small-to-medium watersheds in temperate regions. Application 
+     to tropical DAS with complex topography (mean slope {m["mean_slope"]:.1f}°, 
+     elevation range {raw.get("elevation_min", 0):.0f}-{raw.get("elevation_max", 0):.0f} m) assumes 
+     transferability without local validation.
+   
+   • No routing: Spatial reducers (mean, max per pixel) do not 
+     replicate hydrological routing or lag times, so discharge 
+     timing at the outlet is not simulated.
+ 
+e) DATA RESOLUTION & INTEGRATION:
+   • CHIRPS rainfall (nominal 0.05° ≈ 5.5 km) is coarser than DEM 
+     and satellite indices (10-30 m). Convective rainfall extremes 
+     <5 km scale may be smoothed in CHIRPS.
+   
+   • Sentinel-2 NDVI/NDMI are 10 m resolution but vegetation response 
+     to flooding is snapshot-based (image dates), not continuous 
+     monitoring. Actual damage may be masked/underestimated where 
+     water persists or vegetation recovers rapidly.
+ 
+═══════════════════════════════════════════════════════════════
+8. IMPLICATIONS & CAVEATS FOR INTERPRETATION
+═══════════════════════════════════════════════════════════════
+ 
+✓ ROBUST FINDINGS:
+  • Forest loss 2020→2025: {m["forest_loss_ha"]:,.0f} ha is quantifiable from multi-temporal 
+    satellite data (WorldCover, Dynamic World).
+  
+  • Post-flood NDVI collapse: Mean loss {m["mean_ndvi_loss"]:.4f} is consistent with 
+    vegetation damage from flood impact (sediment deposition, uprooting).
+  
+  • Spatial overlap: Deforestation zone and destruction zone show 
+    significant geographical overlap (see P4 causal matrix).
+ 
+? INTERPRETIVE CAUTION:
+  • While runoff model (+{m["runoff_increase_pct"]:.2f}%) and degradation evidence align 
+    spatially-temporally, causality is inferred, not proven. 
+    Alternative factors not explicitly modeled:
+    - Regional climate oscillations (ENSO, IOD)
+    - Antecedent catchment wetness (not quantified)
+    - Localized extreme rainfall cells not resolved by CHIRPS
+    - Post-fire hydrological changes (if any fire preceded flooding)
+  
+  • Peak discharge amplification at the outlet is estimated from 
+    physical reasoning (concentration, travel-time reduction) but 
+    not directly measured. Field streamflow/discharge data would 
+    validate.
+ 
+═══════════════════════════════════════════════════════════════
+9. RECOMMENDATIONS FOR STRENGTHENING EVIDENCE
+═══════════════════════════════════════════════════════════════
+ 
+1. INTEGRATE HYDROLOGICAL ROUTING:
+   Use HEC-HMS or SWAT model with same CN field to simulate 
+   discharge at outlet, accounting for channel routing and lag.
+ 
+2. VALIDATE WITH GROUND DATA:
+   Stream discharge measurements, soil moisture stations, rain gauge 
+   networks in the DAS would constrain model uncertainty.
+ 
+3. SENSITIVITY ANALYSIS:
+   Vary CN by ±10%, rainfall by ±15%, slope routing assumptions 
+   to quantify runoff range rather than single-point estimate.
+ 
+4. COMPARE SATELLITE PRODUCTS:
+   Cross-check Sentinel-1 SAR flood extent (if available) against 
+   NDVI destruction zones for independent validation.
+ 
+5. HISTORICAL ANALOGUE:
+   Identify similar flood events (rainfall, magnitude) in historical 
+   record with and without deforestation to calibrate amplification 
+   factors.
+ 
 ═══════════════════════════════════════════════════════════════
 """
         print(report_string)

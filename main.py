@@ -109,12 +109,10 @@ def main():
         )
         print("\n[OUTPUT FILES]")
         print("  • data/output_metrics/tangse_meureudu_roi.geojson")
-        print("  • data/output_metrics/forensic_map.html")
         print("  • data/output_metrics/tangse_meureudu_metrics_*.json")
         print("\n[NEXT STEPS]")
         print("  1. Open GeoJSON in QGIS to inspect ROI boundary")
-        print("  2. Review HTML interactive map for visual validation")
-        print("  3. Parse JSON metrics for forensic report generation")
+        print("  2. Parse JSON metrics for forensic report generation")
         print("=" * 70 + "\n")
 
         return 0  # Success exit code
