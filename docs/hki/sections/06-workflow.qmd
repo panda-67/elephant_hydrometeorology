@@ -1,0 +1,544 @@
+## Gambaran Workflow
+
+Workflow utama Elephant Hydrometeorology dijalankan melalui:
+
+```bash
+python main.py
+````
+
+Entry point tersebut menginisialisasi Google Earth Engine, membentuk wilayah analisis berbasis hidrologi, menjalankan empat pipeline analisis, melakukan reduksi dan validasi metrik, kemudian menghasilkan laporan dan keluaran analisis.
+
+Secara umum workflow dapat diringkas sebagai:
+
+```text
+Inisialisasi
+    │
+    ▼
+Google Earth Engine
+    │
+    ▼
+HydroSHEDS / Hydro ROI
+    │
+    ▼
+P1 — Satellite / Vegetation
+    │
+    ▼
+P2 — Hydrology / Runoff
+    │
+    ▼
+P3 — Upstream / Forest Loss
+    │
+    ▼
+P4 — Causal Evidence
+    │
+    ▼
+Server-side Reduction
+    │
+    ▼
+Metric Validation
+    │
+    ▼
+Report Generation
+    │
+    ▼
+Runtime Outputs
+```
+
+Setiap tahap menggunakan hasil dari tahap sebelumnya atau komponen analytical core yang relevan.
+
+## Tahap 1 — Inisialisasi Program
+
+Program dimulai dari:
+
+```text
+main.py
+```
+
+Tahap awal melakukan persiapan objek analisis dan koneksi ke Google Earth Engine.
+
+Komponen utama yang digunakan pada tahap ini adalah:
+
+```text
+GEEEngine
+ForensicAnalysisService
+```
+
+Google Earth Engine diperlukan karena sebagian besar operasi pengolahan data geospasial dilakukan menggunakan objek dan fungsi Earth Engine secara server-side.
+
+## Tahap 2 — Pembentukan Wilayah Analisis
+
+Setelah inisialisasi, program membentuk wilayah analisis atau **Region of Interest (ROI)**.
+
+ROI diperoleh melalui fungsi pada `GEEEngine` yang memanfaatkan informasi hidrologi HydroSHEDS.
+
+Secara konseptual:
+
+```text
+HydroSHEDS
+    │
+    ▼
+Hydrologic delineation
+    │
+    ▼
+Analysis ROI
+```
+
+ROI tersebut kemudian digunakan sebagai batas spasial untuk pipeline analisis.
+
+Penggunaan ROI yang sama memungkinkan hasil dari berbagai sumber data dianalisis pada wilayah spasial yang konsisten.
+
+## Tahap 3 — Pipeline P1
+
+Pipeline pertama terdapat pada:
+
+```text
+src/pipelines/p1_gajah_satellite.py
+```
+
+P1 berfungsi sebagai pipeline analisis penginderaan jauh dan vegetasi.
+
+Secara umum alurnya:
+
+```text
+Satellite imagery
+       │
+       ▼
+Image filtering / preprocessing
+       │
+       ▼
+Temporal analysis
+       │
+       ▼
+Vegetation indices
+       │
+       ├── NDVI
+       └── NDMI
+       │
+       ▼
+Vegetation evidence
+```
+
+Data penginderaan jauh yang tersedia pada komponen vegetasi meliputi Sentinel-2, Landsat, dan Sentinel-1.
+
+Analisis P1 menghasilkan informasi spasial yang digunakan sebagai salah satu sumber bukti untuk tahap integrasi berikutnya.
+
+## Tahap 4 — Pipeline P2
+
+Pipeline kedua terdapat pada:
+
+```text
+src/pipelines/p2_gajah_hydrology.py
+```
+
+P2 berfokus pada analisis hidrologi dan estimasi limpasan.
+
+Workflow konseptualnya:
+
+```text
+Land cover / hydrologic condition
+             │
+             ▼
+        Curve Number
+             │
+             ▼
+     CHIRPS daily rainfall
+             │
+             ▼
+          SCS-CN
+             │
+             ▼
+      Runoff estimation
+             │
+             ▼
+     Hydrologic evidence
+```
+
+Pendekatan SCS-CN digunakan untuk menghubungkan karakteristik permukaan dengan curah hujan dalam menghasilkan estimasi runoff.
+
+Curah hujan harian digunakan sebagai input meteorologis.
+
+Hasil P2 menjadi salah satu komponen bukti yang digunakan dalam analisis integratif.
+
+## Tahap 5 — Pipeline P3
+
+Pipeline ketiga terdapat pada:
+
+```text
+src/pipelines/p3_meureudu_upstream.py
+```
+
+P3 menggabungkan informasi tutupan hutan dan kondisi topografi untuk menganalisis kehilangan hutan pada area tertentu.
+
+Implementasi pipeline menggunakan kondisi kemiringan lereng sebagai salah satu kriteria analisis.
+
+Alur konseptualnya:
+
+```text
+Forest condition
+       │
+       ├──────────────┐
+       │              │
+       ▼              ▼
+Forest loss        Terrain
+                      │
+                      ▼
+                    Slope
+                      │
+                      ▼
+              Spatial filtering
+                      │
+                      ▼
+              P3 evidence layer
+```
+
+Keluaran P3 digunakan sebagai informasi spasial tambahan pada tahap integrasi P4.
+
+## Tahap 6 — Pipeline P4
+
+Pipeline keempat terdapat pada:
+
+```text
+src/pipelines/p4_causal_modeling.py
+```
+
+P4 merupakan tahap integrasi bukti spasial.
+
+Pipeline menerima informasi yang dihasilkan oleh pipeline sebelumnya dan menggabungkannya berdasarkan aturan yang diimplementasikan dalam source code.
+
+Keluaran utama pipeline adalah:
+
+```text
+causal_evidence_tier
+```
+
+Secara konseptual:
+
+```text
+P1 ── Vegetation evidence ──┐
+                            │
+P2 ── Hydrologic evidence ──┼──► P4
+                            │     │
+P3 ── Forest / terrain ─────┘     │
+                                  │
+                                  ▼
+                         causal_evidence_tier
+```
+
+Nilai tier merupakan representasi hasil integrasi bukti spasial. Nilai tersebut kemudian dapat digunakan untuk agregasi luas atau analisis spasial lanjutan.
+
+## Tahap 7 — Server-side Reduction
+
+Setelah pipeline dijalankan, sebagian hasil analisis direduksi pada sisi server Google Earth Engine.
+
+Pendekatan server-side digunakan untuk menghindari kebutuhan memindahkan seluruh raster ke komputer lokal.
+
+Operasi yang digunakan dapat mencakup:
+
+* `reduceRegion`;
+* agregasi statistik;
+* penghitungan luas;
+* pengambilan nilai ringkasan.
+
+Pendekatan ini memungkinkan analisis terhadap data spasial berukuran besar dengan memanfaatkan infrastruktur komputasi Earth Engine.
+
+## Tahap 8 — Validasi Metrik
+
+Hasil analisis kemudian melalui tahap validasi pada:
+
+```text
+src/services/forensic_service.py
+```
+
+Validasi digunakan untuk memeriksa apakah metrik yang dihasilkan memenuhi kondisi yang diharapkan oleh program.
+
+Tujuan tahap ini adalah memastikan bahwa hasil analisis yang akan dilaporkan tidak langsung diteruskan tanpa pemeriksaan terhadap nilai dan struktur hasil.
+
+Secara konseptual:
+
+```text
+Pipeline outputs
+       │
+       ▼
+Metric reduction
+       │
+       ▼
+Validation
+       │
+       ├── valid
+       │
+       └── invalid / warning
+       │
+       ▼
+Report
+```
+
+Validasi pada tahap ini merupakan validasi internal terhadap keluaran komputasi. Validasi tersebut tidak sama dengan validasi lapangan atau validasi statistik eksternal.
+
+## Tahap 9 — Pelaporan
+
+Setelah proses analisis dan validasi selesai, program menghasilkan laporan ringkas melalui console dan keluaran data.
+
+Informasi yang dilaporkan dapat mencakup metrik hasil analisis serta informasi status proses.
+
+Keluaran terstruktur kemudian dapat disimpan sebagai file untuk digunakan pada tahap analisis atau dokumentasi berikutnya.
+
+## Tahap 10 — Runtime Outputs
+
+Workflow dapat menghasilkan keluaran dalam beberapa kategori:
+
+```text
+data/output_metrics/
+data/output_rasters/
+data/output_vectors/
+data/output_topography/
+```
+
+Jenis keluaran bergantung pada entry point dan workflow yang digunakan.
+
+### Metrics
+
+Direktori:
+
+```text
+data/output_metrics/
+```
+
+digunakan untuk menyimpan hasil metrik dan laporan terstruktur.
+
+Format yang digunakan dapat mencakup JSON.
+
+### Raster
+
+Direktori:
+
+```text
+data/output_rasters/
+```
+
+digunakan untuk menyimpan keluaran raster yang dihasilkan atau diekspor dari proses analisis.
+
+Format yang digunakan terutama adalah GeoTIFF untuk keluaran raster yang diproses secara lokal.
+
+### Vector
+
+Direktori:
+
+```text
+data/output_vectors/
+```
+
+digunakan untuk keluaran berbasis data vektor seperti GeoJSON.
+
+### Topography
+
+Direktori:
+
+```text
+data/output_topography/
+```
+
+digunakan oleh workflow topografi yang dijalankan melalui `generate_countour.py`.
+
+## Workflow Utama dan Workflow Pendukung
+
+Tidak seluruh komponen repository dijalankan ketika:
+
+```bash
+python main.py
+```
+
+dieksekusi.
+
+Workflow utama terdiri atas:
+
+```text
+main.py
+   │
+   ▼
+ForensicAnalysisService
+   │
+   ├── P1
+   ├── P2
+   ├── P3
+   └── P4
+```
+
+Sedangkan workflow pendukung dijalankan melalui entry point terpisah.
+
+### Perhitungan Luas Tier
+
+```bash
+python count_tier_area.py
+```
+
+Script ini menjalankan pipeline analisis dan menggunakan hasil P4 untuk menghitung luas masing-masing `causal_evidence_tier`.
+
+Perhitungan luas dilakukan menggunakan:
+
+```text
+pixel area / 10,000
+```
+
+sehingga hasil luas dinyatakan dalam hektare.
+
+### Ekspor Raster
+
+```bash
+python export_assets.py
+```
+
+Script ini menjalankan pipeline dan menggunakan `ExportAssetsService` untuk mengirim keluaran raster ke Google Drive melalui Earth Engine export task.
+
+Script juga melakukan pemantauan status task ekspor.
+
+### Analisis Topografi
+
+```bash
+python generate_countour.py
+```
+
+Script tersebut:
+
+1. memperoleh hydro ROI;
+2. membuat direktori output berdasarkan timestamp;
+3. membuat `TopographyService`;
+4. menjalankan workflow topografi;
+5. menggunakan interval kontur yang ditetapkan dalam script.
+
+Pada implementasi versi yang didokumentasikan, interval kontur yang diberikan adalah:
+
+```text
+10 meter
+```
+
+### Analisis Transek
+
+```bash
+python generate_track.py
+```
+
+Script tersebut menggunakan `TransectGenerator` untuk menghasilkan cost surface dan kandidat transek berdasarkan parameter topografi dan batasan area.
+
+## Workflow Analisis Transek
+
+Workflow `generate_track.py` menggunakan pendekatan berbasis *cost surface* dan *least-cost path*.
+
+Parameter yang diterapkan dalam source code meliputi:
+
+| Parameter                            |   Nilai |
+| ------------------------------------ | ------: |
+| Optimum elevation untuk cost surface |   250 m |
+| Maximum slope pada cost surface      |     25° |
+| Elevation weight                     |     0.4 |
+| Slope weight                         |     0.4 |
+| Aspect weight                        |     0.2 |
+| Minimum elevation                    |   100 m |
+| Maximum elevation                    |   300 m |
+| Minimum slope                        |      5° |
+| Maximum slope                        |     20° |
+| Minimum area                         |   40 ha |
+| Transect length                      | 8.000 m |
+
+Rentang aspek yang digunakan pada implementasi adalah:
+
+```text
+45°–135°
+135°–225°
+```
+
+Cost surface disimpan sebagai raster dan kandidat transek diekspor sebagai data vektor.
+
+## Workflow Keseluruhan
+
+Jika seluruh komponen repository dipertimbangkan, workflow program dapat direpresentasikan sebagai:
+
+```text
+                       ┌─────────────────┐
+                       │    config.py    │
+                       └────────┬────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │   GEEEngine     │
+                       └────────┬────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │   Hydro ROI     │
+                       └────────┬────────┘
+                                │
+              ┌─────────────────┼──────────────────┐
+              │                 │                  │
+              ▼                 ▼                  ▼
+        ┌──────────┐      ┌──────────┐       ┌──────────┐
+        │    P1    │      │    P2    │       │    P3    │
+        │Vegetation│      │Hydrology │       │ Forest / │
+        │          │      │          │       │ Terrain  │
+        └────┬─────┘      └────┬─────┘       └────┬─────┘
+             │                 │                  │
+             └─────────────────┼──────────────────┘
+                               ▼
+                        ┌───────────────┐
+                        │      P4       │
+                        │Causal Evidence│
+                        └──────┬────────┘
+                               │
+                               ▼
+                        ┌──────────────┐
+                        │   Reduction  │
+                        └──────┬───────┘
+                               │
+                               ▼
+                        ┌──────────────┐
+                        │  Validation  │
+                        └──────┬───────┘
+                               │
+                               ▼
+                        ┌──────────────┐
+                        │    Report    │
+                        └──────┬───────┘
+                               │
+                               ▼
+                 ┌────────────────────────────┐
+                 │      Runtime Outputs       │
+                 │ Metrics / Raster / Vector  │
+                 └────────────────────────────┘
+
+
+        Auxiliary workflows
+        ───────────────────
+
+        count_tier_area.py
+               │
+               └──► Tier area report
+
+        export_assets.py
+               │
+               └──► Google Drive raster export
+
+        generate_countour.py
+               │
+               └──► DEM / slope / hillshade / contour
+
+        generate_track.py
+               │
+               └──► Cost surface / transect
+
+        src/R/plot.R
+               │
+               └──► R-based visualization
+```
+
+## Karakteristik Workflow
+
+Workflow program memiliki beberapa karakteristik teknis utama.
+
+Pertama, pemrosesan geospasial utama dilakukan menggunakan Google Earth Engine sehingga operasi terhadap citra dan raster dapat dilakukan secara server-side.
+
+Kedua, workflow menggunakan pendekatan modular. Analisis vegetasi, tutupan lahan, hidrologi, dan topografi dipisahkan ke dalam komponen analytical core.
+
+Ketiga, pipeline P1–P4 digunakan untuk mengorganisasi analisis berdasarkan fungsi, kemudian hasilnya diintegrasikan pada tahap P4.
+
+Keempat, service digunakan sebagai lapisan orkestrasi dan operasi pendukung, sehingga entry point tidak harus mengimplementasikan seluruh logika analisis secara langsung.
+
+Kelima, hasil analisis dapat digunakan dalam dua bentuk, yaitu sebagai metrik terstruktur untuk pelaporan dan sebagai data spasial untuk analisis lebih lanjut menggunakan perangkat lunak SIG.

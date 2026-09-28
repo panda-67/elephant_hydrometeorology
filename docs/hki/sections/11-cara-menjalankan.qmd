@@ -1,0 +1,629 @@
+## Persiapan Source Code
+
+Program dijalankan dari root repository `elephant_hydrometeorology`. Source code yang didokumentasikan pada dokumen ini mengacu pada tag:
+
+```text
+hki-v1.0.0
+```
+
+Struktur minimal repository yang diperlukan untuk menjalankan pipeline utama adalah:
+
+```text
+elephant_hydrometeorology/
+├── config.py
+├── main.py
+├── environment.yml
+├── src/
+│   ├── core/
+│   ├── pipelines/
+│   └── services/
+└── data/
+```
+
+Eksekusi dilakukan dari direktori root repository agar seluruh path relatif seperti `data/output_metrics/` dapat ditemukan dengan benar.
+
+## Membuat Environment
+
+Environment program didefinisikan pada `environment.yml` dengan nama:
+
+```text
+geo-forensic-env
+```
+
+Dengan Micromamba, environment dapat dibuat menggunakan:
+
+```bash
+micromamba create -f environment.yml
+```
+
+Setelah proses pembuatan selesai, environment diaktifkan dengan:
+
+```bash
+micromamba activate geo-forensic-env
+```
+
+Alternatif menggunakan Conda dapat dilakukan dengan perintah:
+
+```bash
+conda env create -f environment.yml
+conda activate geo-forensic-env
+```
+
+Environment yang aktif harus menyediakan Python 3.11 sebagaimana didefinisikan pada `environment.yml`.
+
+## Verifikasi Python dan Dependency
+
+Sebelum menjalankan pipeline, versi Python dapat diperiksa:
+
+```bash
+python --version
+```
+
+Hasil yang diharapkan berada pada seri:
+
+```text
+Python 3.11.x
+```
+
+Ketersediaan Earth Engine API dapat diperiksa dengan:
+
+```bash
+python -c "import ee; print('Earth Engine API tersedia')"
+```
+
+Dependency geospasial utama dapat diperiksa menggunakan:
+
+```bash
+python -c "import geemap, geopandas, rasterio, shapely; print('Geospatial dependencies tersedia')"
+```
+
+Pemeriksaan tersebut bertujuan memastikan environment telah aktif dan library utama dapat diimpor sebelum proses analisis dimulai.
+
+## Konfigurasi Program
+
+Parameter utama program dikendalikan melalui `config.py`.
+
+Konfigurasi digunakan oleh berbagai komponen program, termasuk:
+
+* project Google Earth Engine;
+* koordinat outlet watershed;
+* periode baseline;
+* periode pre-event;
+* periode post-event;
+* periode kejadian banjir;
+* mode sensor satelit.
+
+Pipeline tidak menerima seluruh parameter tersebut melalui command-line argument. Oleh karena itu, perubahan periode atau parameter analisis dilakukan melalui konfigurasi program sebelum eksekusi.
+
+Contoh penggunaan mode sensor pada pipeline satelit adalah:
+
+```python
+self.mode = mode if mode else getattr(
+    config,
+    "SATELLITE_MODE",
+    "sentinel2"
+)
+```
+
+Jika tidak diberikan secara eksplisit, pipeline menggunakan konfigurasi `SATELLITE_MODE`, dengan `sentinel2` sebagai nilai default.
+
+## Autentikasi Google Earth Engine
+
+Google Earth Engine harus dapat diakses sebelum pipeline utama dijalankan.
+
+Autentikasi dilakukan menggunakan:
+
+```bash
+earthengine authenticate
+```
+
+Setelah autentikasi, program menggunakan project ID yang terdapat dalam konfigurasi ketika membuat objek `GEEEngine`.
+
+Implementasi inisialisasi pada `engine.py` menggunakan:
+
+```python
+ee.Initialize(project=config.PROJECT_ID)
+```
+
+Jika inisialisasi gagal, program menghasilkan `RuntimeError` dan menghentikan proses.
+
+## Menjalankan Pipeline Utama
+
+Entry point utama program adalah:
+
+```text
+main.py
+```
+
+Program dijalankan dari root repository menggunakan:
+
+```bash
+python main.py
+```
+
+Secara konseptual, eksekusi utama mengikuti urutan:
+
+```text
+python main.py
+      │
+      ▼
+Inisialisasi Google Earth Engine
+      │
+      ▼
+Delineasi HydroSHEDS ROI
+      │
+      ▼
+Pipeline P1
+Analisis vegetasi
+      │
+      ▼
+Pipeline P2
+Analisis hidrologi
+      │
+      ▼
+Pipeline P3
+Analisis hulu
+      │
+      ▼
+Pipeline P4
+Integrasi spasial
+      │
+      ▼
+Server-side reduction
+      │
+      ▼
+Validasi dan parsing metrik
+      │
+      ▼
+Console report
+      │
+      ▼
+JSON metrics
+```
+
+Pipeline utama menggunakan objek `ForensicAnalysisService` sebagai pengatur eksekusi analisis.
+
+## Inisialisasi Wilayah Studi
+
+Pada saat `ForensicAnalysisService` dibuat, program menginisialisasi `GEEEngine` dan memperoleh wilayah studi melalui:
+
+```python
+self.roi = self.engine.get_hydro_roi()
+```
+
+`get_hydro_roi()` menggunakan dataset HydroSHEDS Level 12:
+
+```python
+ee.FeatureCollection(
+    "WWF/HydroSHEDS/v1/Basins/hybas_12"
+)
+```
+
+Outlet yang ditentukan dalam konfigurasi digunakan untuk memilih basin yang relevan. Basin yang terpilih kemudian digabungkan menjadi satu geometri ROI.
+
+Dengan demikian, pengguna tidak perlu menyediakan shapefile ROI sebagai input utama pipeline.
+
+## Eksekusi Pipeline Analisis
+
+Setelah ROI tersedia, `ForensicAnalysisService` menjalankan empat pipeline:
+
+```python
+p1 = GajahSatellitePipeline(self.roi).execute()
+p2 = GajahHydrologyPipeline(self.roi).execute()
+p3 = MeureuduUpstreamPipeline(self.roi).execute()
+p4 = SpatialCausalPipeline(p1, p2, self.roi).execute()
+```
+
+Keempat hasil tersebut dikembalikan sebagai tuple:
+
+```text
+(p1, p2, p3, p4)
+```
+
+### P1 — Analisis Satelit
+
+P1 menghasilkan indikator perubahan vegetasi multitemporal, termasuk:
+
+```text
+NDVI_baseline
+NDVI_preevent
+NDVI_postevent
+NDMI_baseline
+NDMI_preevent
+NDMI_postevent
+d_NDVI_degradation
+d_NDVI_destruction
+NDVI_Degradation_Mask
+ndvi_degradation_masif
+```
+
+Pipeline juga menghitung percentile ke-5, ke-10, dan ke-25 dari perubahan NDVI dan menggunakan percentile ke-10 sebagai threshold untuk mask degradasi.
+
+### P2 — Analisis Hidrologi
+
+P2 menggabungkan tutupan lahan, forest loss, Curve Number, dan curah hujan dinamis.
+
+Output utama meliputi:
+
+```text
+dynamic_rainfall_peak
+Q_simulated_baseline
+Q_actual_floodevent
+runoff_net_increase
+```
+
+Perubahan runoff dihitung dari perbedaan simulasi kondisi baseline dan kondisi yang telah diberi skenario degradasi.
+
+### P3 — Analisis Hulu
+
+P3 menggabungkan informasi forest cover, forest loss, dan slope.
+
+Output utamanya adalah:
+
+```text
+forest_cover_2020
+forest_loss_preevent
+critical_upstream_deforestation
+```
+
+Mask `critical_upstream_deforestation` dibatasi pada area dengan slope lebih besar dari 15 derajat.
+
+### P4 — Integrasi Spasial
+
+P4 menerima hasil P1 dan P2 dan menghasilkan matriks spasial yang menggabungkan indikator perubahan vegetasi dan peningkatan runoff.
+
+Outputnya mencakup:
+
+```text
+d_NDVI_degradation
+d_NDVI_destruction
+ndvi_net_loss
+disturbance_shift
+significant_change_mask
+compound_hotspot
+runoff_increase_resampled
+causal_evidence_tier
+hydro_confirmed_hotspot
+```
+
+## Reduksi Statistik
+
+Setelah pipeline selesai, service membentuk `master_forensic_image` yang menggabungkan DEM, slope, dan hasil P1–P4.
+
+Program kemudian menerapkan kombinasi reducer:
+
+```python
+ee.Reducer.mean()
+    .combine(reducer2=ee.Reducer.median(), sharedInputs=True)
+    .combine(reducer2=ee.Reducer.max(), sharedInputs=True)
+    .combine(reducer2=ee.Reducer.sum(), sharedInputs=True)
+```
+
+Reduksi dilakukan menggunakan:
+
+```text
+scale = 30
+maxPixels = 1e13
+```
+
+Hasil reduksi kemudian diambil dari server Earth Engine menggunakan `.getInfo()` untuk diproses lebih lanjut oleh Python.
+
+Selain statistik raster, luas ROI juga dihitung dan informasi temporal dari P1 ditambahkan ke payload metrik.
+
+## Validasi dan Penyimpanan Metrik
+
+Setelah proses reduksi, hasil analisis diproses oleh fungsi validasi pada `ForensicAnalysisService`.
+
+Program memiliki mekanisme untuk memeriksa keberadaan metrik dan menangani nilai yang tidak tersedia.
+
+Salah satu mekanisme ekstraksi metrik pada `GEEEngine` menggunakan pencocokan nama band dan suffix reducer:
+
+```python
+if k == key or k.endswith("_" + key):
+    return v
+```
+
+Pendekatan tersebut digunakan untuk mengurangi risiko mengambil nilai dari nama field yang hanya memiliki kesamaan substring.
+
+Setelah validasi, hasil analisis dapat disimpan sebagai payload JSON pada direktori:
+
+```text
+data/output_metrics/
+```
+
+## Ekspor ROI
+
+Pipeline utama juga menyediakan ekspor geometri ROI ke GeoJSON melalui `GEEEngine`.
+
+Path output yang digunakan adalah:
+
+```text
+data/output_metrics/tangse_meureudu_roi.geojson
+```
+
+Berkas tersebut dapat digunakan untuk pemeriksaan spasial atau dibuka pada aplikasi GIS seperti QGIS.
+
+Struktur GeoJSON dibuat secara lokal setelah geometri ROI diambil dari Earth Engine menggunakan:
+
+```python
+roi.getInfo()
+```
+
+## Output Setelah Eksekusi
+
+Output yang dihasilkan bergantung pada script yang dijalankan.
+
+Untuk pipeline utama, direktori utama adalah:
+
+```text
+data/output_metrics/
+```
+
+Output dapat mencakup:
+
+```text
+*.json
+*.geojson
+*.csv
+```
+
+Script tambahan dapat menghasilkan:
+
+```text
+data/output_rasters/
+data/output_topography/
+data/output_vectors/
+```
+
+Direktori tersebut merupakan direktori runtime dan bukan kumpulan data input yang wajib disimpan dalam repository source.
+
+## Menjalankan Perhitungan Luas per Tier
+
+Repository menyediakan script tambahan:
+
+```text
+count_tier_area.py
+```
+
+Script tersebut menjalankan kembali pipeline analisis dan mengambil band:
+
+```text
+causal_evidence_tier
+```
+
+Luas dihitung berdasarkan pixel area yang dikonversi ke hektar:
+
+```python
+ee.Image.pixelArea().divide(10000)
+```
+
+Hasil kemudian dikelompokkan berdasarkan nilai tier menggunakan grouped reducer.
+
+Eksekusi dilakukan dengan:
+
+```bash
+python count_tier_area.py
+```
+
+Output CSV disimpan sebagai:
+
+```text
+data/output_metrics/tier_area.csv
+```
+
+CSV tersebut memiliki kolom:
+
+```text
+tier
+kategori
+luas_ha
+persen
+```
+
+## Menjalankan Ekspor Raster
+
+Repository juga menyediakan:
+
+```text
+export_assets.py
+```
+
+Script tersebut menjalankan pipeline analisis dan menggunakan `ExportAssetsService` untuk mengirim aset raster ke Google Drive.
+
+Eksekusi:
+
+```bash
+python export_assets.py
+```
+
+Script melakukan polling terhadap task ekspor aktif dengan interval waktu tertentu sampai task selesai atau gagal.
+
+Workflow ini digunakan ketika hasil raster perlu tersedia sebagai aset untuk pemrosesan atau analisis GIS lebih lanjut.
+
+## Menjalankan Analisis Topografi
+
+Script:
+
+```text
+generate_countour.py
+```
+
+digunakan untuk menjalankan workflow topografi.
+
+Script memperoleh ROI melalui `GEEEngine`, kemudian menjalankan `TopographyService` dengan interval kontur:
+
+```python
+TopographyService(...).run(contour_interval=10)
+```
+
+Eksekusi:
+
+```bash
+python generate_countour.py
+```
+
+Hasil ditempatkan pada direktori:
+
+```text
+data/output_topography/
+```
+
+Subdirektori output menggunakan timestamp sebagai penanda waktu eksekusi.
+
+## Menjalankan Generator Transek
+
+Script:
+
+```text
+generate_track.py
+```
+
+digunakan untuk workflow pencarian area kandidat dan pembuatan transek.
+
+Workflow tersebut dapat menggunakan least-cost analysis dan menghasilkan cost surface:
+
+```text
+data/output_rasters/cost_surface.tif
+```
+
+Hasil vektor transek ditempatkan pada:
+
+```text
+data/output_vectors/
+```
+
+Script ini merupakan workflow pendukung dan bukan bagian dari urutan P1–P4 yang dijalankan oleh `main.py`.
+
+## Pemeriksaan Hasil
+
+Setelah `main.py` selesai tanpa error, pemeriksaan awal dapat dilakukan dengan:
+
+```bash
+find data/output_metrics -maxdepth 1 -type f
+```
+
+Untuk memeriksa file JSON:
+
+```bash
+ls -lh data/output_metrics/*.json
+```
+
+Untuk memeriksa GeoJSON:
+
+```bash
+ls -lh data/output_metrics/*.geojson
+```
+
+Untuk hasil tier:
+
+```bash
+ls -lh data/output_metrics/tier_area.csv
+```
+
+Pemeriksaan isi JSON dapat dilakukan menggunakan Python:
+
+```bash
+python -m json.tool data/output_metrics/<nama_file>.json
+```
+
+Nama file aktual mengikuti implementasi dan hasil eksekusi pada konfigurasi yang digunakan.
+
+## Pemeriksaan Menggunakan QGIS
+
+GeoJSON ROI dapat dibuka menggunakan QGIS.
+
+File:
+
+```text
+data/output_metrics/tangse_meureudu_roi.geojson
+```
+
+dapat dimasukkan ke QGIS melalui:
+
+```text
+Layer → Add Layer → Add Vector Layer
+```
+
+atau dengan drag-and-drop langsung ke map canvas.
+
+Workflow ini memungkinkan hasil delineasi ROI dari Earth Engine diperiksa secara visual bersama layer geospasial lain.
+
+## Penanganan Kegagalan Eksekusi
+
+Program menerapkan beberapa mekanisme penghentian proses apabila terjadi kegagalan penting.
+
+Contohnya, apabila koneksi Earth Engine gagal, `GEEEngine` menghasilkan:
+
+```python
+RuntimeError(...)
+```
+
+Pada P1, apabila mode Sentinel-2 digunakan tetapi koleksi pre-event kosong karena kondisi tutupan awan, program menghasilkan `RuntimeError` dan memberikan opsi perubahan mode sensor ke Sentinel-1 melalui konfigurasi.
+
+Prinsip yang digunakan adalah menghentikan proses ketika input atau hasil penting tidak tersedia daripada mengganti data secara otomatis dengan nilai fallback yang tidak berasal dari sumber analisis.
+
+## Urutan Eksekusi Minimum
+
+Untuk menjalankan pipeline utama dari environment yang telah dikonfigurasi, urutan minimum adalah:
+
+```bash
+cd elephant_hydrometeorology
+
+micromamba activate geo-forensic-env
+
+earthengine authenticate
+
+python main.py
+```
+
+Setelah proses selesai, output diperiksa pada:
+
+```text
+data/output_metrics/
+```
+
+Jika diperlukan analisis tambahan, script pendukung dapat dijalankan secara terpisah:
+
+```bash
+python count_tier_area.py
+python export_assets.py
+python generate_countour.py
+python generate_track.py
+```
+
+Keempat script tersebut tidak perlu dijalankan untuk memperoleh hasil dasar dari pipeline utama.
+
+## Ringkasan Prosedur Operasional
+
+Prosedur eksekusi program dapat diringkas sebagai berikut:
+
+```text
+1. Clone repository
+       ↓
+2. Masuk ke root repository
+       ↓
+3. Buat environment geo-forensic-env
+       ↓
+4. Aktifkan environment
+       ↓
+5. Pastikan konfigurasi config.py benar
+       ↓
+6. Autentikasi Google Earth Engine
+       ↓
+7. Jalankan python main.py
+       ↓
+8. Pipeline P1 → P2 → P3 → P4
+       ↓
+9. Reduksi statistik server-side
+       ↓
+10. Validasi metrik
+       ↓
+11. Simpan output
+       ↓
+12. Periksa output JSON / GeoJSON
+       ↓
+13. Gunakan QGIS atau workflow tambahan
+    bila diperlukan
+```
+
+Dengan prosedur tersebut, source code pada tag `hki-v1.0.0` dapat dijalankan dari environment yang didefinisikan repository dan menghasilkan keluaran analisis berdasarkan konfigurasi serta data eksternal Google Earth Engine yang tersedia pada saat eksekusi.

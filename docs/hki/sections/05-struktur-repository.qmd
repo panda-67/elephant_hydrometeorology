@@ -1,0 +1,429 @@
+## Struktur Repository
+
+Source code Elephant Hydrometeorology pada versi yang didokumentasikan tersusun dalam beberapa komponen utama.
+
+Struktur repository pada snapshot `hki-v1.0.0` adalah sebagai berikut:
+
+```text
+elephant_hydrometeorology/
+├── .gitignore
+├── README.md
+├── config.py
+├── count_tier_area.py
+├── data/
+│   └── .gitkeep
+├── environment.yml
+├── export_assets.py
+├── generate_countour.py
+├── generate_track.py
+├── main.py
+└── src/
+    ├── __init__.py
+    ├── R/
+    │   └── plot.R
+    ├── core/
+    │   ├── __init__.py
+    │   ├── engine.py
+    │   ├── hydrology.py
+    │   ├── landcover.py
+    │   ├── terrain.py
+    │   └── vegetation.py
+    ├── pipelines/
+    │   ├── __init__.py
+    │   ├── p1_gajah_satellite.py
+    │   ├── p2_gajah_hydrology.py
+    │   ├── p3_meureudu_upstream.py
+    │   └── p4_causal_modeling.py
+    └── services/
+        ├── __init__.py
+        ├── export_service.py
+        ├── forensic_service.py
+        ├── topography_service.py
+        └── transect_service.py
+````
+
+Struktur tersebut merupakan struktur source repository. Direktori keluaran analisis yang dibuat ketika program dijalankan tidak termasuk dalam snapshot source code.
+
+## Komponen Root Repository
+
+File yang berada pada direktori utama repository berfungsi sebagai konfigurasi, entry point, utility script, dan dokumentasi.
+
+| File | Fungsi |
+|:-----|:-------|
+| `README.md` | **Dokumentasi.** Menjelaskan tujuan, penggunaan, struktur, dan workflow umum repository. |
+| `config.py` | **Konfigurasi.** Menyediakan parameter konfigurasi program. |
+| `environment.yml` | **Environment.** Mendefinisikan environment dan dependency program. |
+| `main.py` | **Entry point.** Menjalankan workflow analisis utama. |
+| `count_tier_area.py` | **Utility.** Menghitung luas berdasarkan `causal_evidence_tier`. |
+| `export_assets.py` | **Utility.** Menjalankan ekspor hasil analisis ke Google Drive. |
+| `generate_countour.py` | **Utility.** Menjalankan workflow topografi dan pembuatan kontur. |
+| `generate_track.py` | **Utility.** Menjalankan analisis kandidat area dan pembuatan transek. |
+| `.gitignore` | **Repository.** Menentukan file atau direktori yang tidak perlu disimpan dalam Git. |
+
+Nama `generate_countour.py` mengikuti nama file yang terdapat pada source repository. Ejaan tersebut merupakan bagian dari nama file pada snapshot yang didokumentasikan.
+
+## Direktori `data/`
+
+Direktori:
+
+```text
+data/
+```
+
+disediakan sebagai lokasi kerja untuk data dan keluaran runtime.
+
+Pada snapshot source `hki-v1.0.0`, direktori tersebut hanya berisi:
+
+```text
+data/.gitkeep
+```
+
+Keluaran analisis dibuat secara dinamis ketika program dijalankan.
+
+Struktur keluaran yang digunakan oleh berbagai komponen meliputi:
+
+```text
+data/
+├── output_metrics/
+├── output_rasters/
+├── output_topography/
+└── output_vectors/
+```
+
+Direktori tersebut tidak perlu tersedia di dalam repository source sebelum eksekusi karena dapat dibuat oleh workflow masing-masing.
+
+## Package `src/`
+
+Direktori:
+
+```text
+src/
+```
+
+merupakan package utama yang berisi komponen analisis program.
+
+Komponen di dalamnya dibagi menjadi:
+
+```text
+src/
+├── core/
+├── pipelines/
+├── services/
+└── R/
+```
+
+Pembagian ini memisahkan fungsi analisis dasar, pipeline analisis, service pendukung, dan visualisasi.
+
+## Package `src/core/`
+
+Direktori:
+
+```text
+src/core/
+```
+
+berisi komponen analytical core.
+
+| File | Komponen dan fungsi |
+|:-----|:--------------------|
+| `engine.py` | **`GEEEngine`.** Interaksi dengan Google Earth Engine, pembentukan ROI hidrologi, operasi reduksi server-side, ekspor, dan pelaporan metrik. |
+| `vegetation.py` | **`VegetationAnalyzer`.** Pemrosesan citra Sentinel-2, Landsat, dan Sentinel-1 serta pembentukan indeks vegetasi seperti NDVI dan NDMI. |
+| `landcover.py` | **`LandCoverAnalyzer`.** Analisis tutupan lahan, forest mask, non-forest mask, forest loss mask, dan luas berbasis pixel area. |
+| `hydrology.py` | **Komponen hidrologi.** Analisis Curve Number, SCS-CN, runoff, CHIRPS Daily, dan peak rainfall. |
+| `terrain.py` | **Komponen terrain.** Analisis DEM, elevasi, slope, aspect, dan hillshade. |
+
+File:
+
+```text
+src/core/__init__.py
+```
+
+digunakan untuk mendefinisikan package Python.
+
+## `src/core/engine.py`
+
+`engine.py` menyediakan komponen dasar untuk interaksi dengan Google Earth Engine.
+
+Fungsi yang ditangani mencakup:
+
+* autentikasi dan inisialisasi Earth Engine;
+* pengambilan informasi hidrologi;
+* pembentukan HydroSHEDS-based ROI;
+* operasi terhadap data Earth Engine;
+* fungsi reduksi server-side;
+* ekspor atau penyimpanan informasi spasial;
+* fungsi pelaporan metrik.
+
+Komponen engine digunakan oleh service dan pipeline sebagai lapisan infrastruktur analisis.
+
+## `src/core/vegetation.py`
+
+`vegetation.py` menangani pengolahan data penginderaan jauh untuk analisis vegetasi.
+
+Sumber data yang digunakan meliputi:
+
+* Sentinel-2;
+* Landsat;
+* Sentinel-1.
+
+Fungsi utama mencakup pemrosesan citra, penyaringan kondisi citra, dan pembentukan indeks vegetasi seperti NDVI dan NDMI.
+
+## `src/core/landcover.py`
+
+`landcover.py` menyediakan fungsi pengolahan tutupan lahan.
+
+Sumber data yang digunakan adalah:
+
+```text
+ESA/WorldCover/v100/2020
+GOOGLE/DYNAMICWORLD/V1
+```
+
+Komponen menyediakan fungsi untuk menghasilkan:
+
+* klasifikasi tutupan lahan;
+* forest mask;
+* non-forest mask;
+* forest loss mask;
+* informasi luas berbasis pixel area.
+
+Pada implementasi WorldCover, kelas dengan kode `10` digunakan sebagai kelas hutan.
+
+Pada Dynamic World, kelas dengan kode `1` digunakan sebagai kelas hutan.
+
+## `src/core/hydrology.py`
+
+`hydrology.py` menyediakan fungsi analisis hidrologi.
+
+Komponen utama meliputi:
+
+* Curve Number;
+* metode SCS-CN;
+* estimasi runoff;
+* pengolahan curah hujan;
+* CHIRPS Daily;
+* analisis curah hujan maksimum atau peak rainfall.
+
+Keluaran modul digunakan terutama oleh pipeline P2.
+
+## `src/core/terrain.py`
+
+`terrain.py` menangani pengolahan digital elevation model.
+
+Parameter topografi yang tersedia meliputi:
+
+* elevasi;
+* slope;
+* aspect;
+* hillshade.
+
+Komponen terrain merupakan analytical core yang dapat digunakan oleh pipeline maupun service yang memerlukan informasi medan.
+
+## Package `src/pipelines/`
+
+Direktori:
+
+```text
+src/pipelines/
+```
+
+berisi empat pipeline analisis utama.
+
+| File | Pipeline dan fungsi |
+|:-----|:--------------------|
+| `p1_gajah_satellite.py` | **P1.** Analisis multitemporal vegetasi dan penginderaan jauh. |
+| `p2_gajah_hydrology.py` | **P2.** Analisis hidrologi dan runoff. |
+| `p3_meureudu_upstream.py` | **P3.** Analisis forest loss pada area hulu dan kondisi lereng. |
+| `p4_causal_modeling.py` | **P4.** Integrasi bukti spasial dan pembentukan *causal evidence tier*. |
+
+File:
+
+```text
+src/pipelines/__init__.py
+```
+
+digunakan untuk mendefinisikan package pipeline.
+
+## Package `src/services/`
+
+Direktori:
+
+```text
+src/services/
+```
+
+berisi komponen service yang mengatur orkestrasi, ekspor, topografi, dan transek.
+
+| File | Komponen dan fungsi |
+|:-----|:--------------------|
+| `forensic_service.py` | **`ForensicAnalysisService`.** Orkestrasi pipeline dan validasi metrik. |
+| `export_service.py` | **`ExportAssetsService`.** Ekspor raster hasil analisis. |
+| `topography_service.py` | **`TopographyService`.** Workflow analisis topografi dan pembuatan kontur. |
+| `transect_service.py` | **`TransectGenerator`.** Kandidat area, cost surface, least-cost path, dan transek. |
+
+File:
+
+```text
+src/services/__init__.py
+```
+
+digunakan untuk mendefinisikan package service.
+
+## `src/services/forensic_service.py`
+
+`forensic_service.py` merupakan salah satu komponen utama pada lapisan service.
+
+`ForensicAnalysisService` menghubungkan komponen analytical core dengan pipeline analisis.
+
+Fungsi utamanya mencakup:
+
+1. inisialisasi wilayah analisis;
+2. menjalankan pipeline P1–P4;
+3. mengelola hasil setiap pipeline;
+4. melakukan pengurangan atau agregasi metrik;
+5. memvalidasi hasil analisis;
+6. menyediakan hasil untuk entry point dan pelaporan.
+
+Dengan demikian, service ini berfungsi sebagai orchestrator untuk workflow analisis utama.
+
+## `src/services/export_service.py`
+
+`export_service.py` menangani ekspor hasil analisis raster.
+
+Service dapat mengatur ekspor hasil pipeline ke Google Drive melalui mekanisme task Earth Engine.
+
+Pada snapshot `hki-v1.0.0`, konfigurasi ekspor raster P1 dinonaktifkan secara eksplisit di dalam implementasi service. P2, P3, dan P4 tetap tersedia untuk proses ekspor sesuai konfigurasi yang diterapkan.
+
+## `src/services/topography_service.py`
+
+`topography_service.py` menyediakan workflow khusus untuk menghasilkan keluaran topografi.
+
+Output dapat mencakup:
+
+* DEM;
+* slope;
+* hillshade;
+* contour.
+
+Workflow tersebut dipanggil melalui utility script:
+
+```text
+generate_countour.py
+```
+
+Service ini tidak dipanggil oleh workflow default `main.py`.
+
+## `src/services/transect_service.py`
+
+`transect_service.py` menyediakan fungsi untuk membentuk kandidat area dan transek.
+
+Analisis dapat menggunakan parameter:
+
+* elevasi;
+* slope;
+* aspect;
+* luas minimum;
+* panjang transek;
+* cost surface;
+* least-cost path.
+
+Komponen ini digunakan oleh:
+
+```text
+generate_track.py
+```
+
+dan tidak dijalankan secara otomatis oleh `main.py`.
+
+## Direktori `src/R/`
+
+Direktori:
+
+```text
+src/R/
+```
+
+berisi script R:
+
+```text
+plot.R
+```
+
+Script tersebut digunakan untuk kebutuhan visualisasi atau pengolahan hasil analisis menggunakan R.
+
+Komponen R bersifat pendukung dan bukan entry point utama program.
+
+## Klasifikasi Komponen
+
+Untuk kepentingan dokumentasi teknis, komponen repository dapat dikelompokkan sebagai berikut:
+
+| Kelompok          | Komponen                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------- |
+| Konfigurasi       | `config.py`, `environment.yml`                                                            |
+| Core              | `src/core/*`                                                                            |
+| Pipeline          | `src/pipelines/*`                                                                       |
+| Service           | `src/services/*`                                                                        |
+| Entry point utama | `main.py`                                                                               |
+| Utility           | `count_tier_area.py`, `export_assets.py`, `generate_countour.py`, `generate_track.py`         |
+| Visualisasi       | `src/R/plot.R`                                                                          |
+| Dokumentasi       | `README.md`                                                                             |
+| Runtime data      | `data/`                                                                                 |
+
+## Hubungan File dengan Workflow Utama
+
+Workflow default dapat dipetakan terhadap source code sebagai berikut:
+
+```text
+main.py
+   │
+   ▼
+ForensicAnalysisService
+   │
+   ├── GEEEngine
+   │
+   ├── P1
+   │    └── Vegetation / Land Cover
+   │
+   ├── P2
+   │    └── Hydrology
+   │
+   ├── P3
+   │    └── Land Cover / Terrain
+   │
+   └── P4
+        └── Spatial evidence integration
+```
+
+Service dan utility tertentu berada di luar jalur eksekusi tersebut:
+
+```text
+export_assets.py
+    └── ExportAssetsService
+
+generate_countour.py
+    └── TopographyService
+
+generate_track.py
+    └── TransectGenerator
+
+count_tier_area.py
+    └── ForensicAnalysisService
+```
+
+Pemisahan tersebut menunjukkan bahwa repository menyediakan beberapa workflow yang dapat dijalankan sesuai kebutuhan, sementara `main.py` berfungsi sebagai entry point untuk workflow analisis utama.
+
+## Status Source dan Runtime
+
+Perlu dibedakan antara dua jenis struktur:
+
+**Source structure**
+
+Berisi file yang disimpan dan dilacak dalam repository Git pada versi tertentu.
+
+**Runtime structure**
+
+Berisi direktori dan file yang dibuat ketika program dieksekusi, termasuk hasil raster, vector, metric, dan laporan.
+
+Pada versi `hki-v1.0.0`, source repository tidak menyimpan hasil analisis runtime sebagai bagian dari snapshot source code.
+
+Pemisahan ini memungkinkan source code tetap dapat ditelusuri secara independen dari hasil eksekusi pada waktu tertentu.

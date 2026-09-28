@@ -1,0 +1,489 @@
+## Identitas Repository
+
+Program yang didokumentasikan dalam dokumen ini disimpan dalam repository GitHub:
+
+```text
+panda-67/elephant_hydrometeorology
+```
+
+Repository digunakan sebagai sistem version control untuk source code, konfigurasi, environment specification, dan dokumentasi pendukung program.
+
+Repository menyediakan mekanisme untuk mengidentifikasi perubahan source code berdasarkan commit, branch, dan tag.
+
+## Repository Resmi
+
+Alamat repository:
+
+```text
+https://github.com/panda-67/elephant_hydrometeorology
+```
+
+Repository tersebut menjadi lokasi utama source code program yang didokumentasikan.
+
+Untuk kebutuhan dokumentasi HKI, identifikasi berdasarkan tag dan commit digunakan agar dokumen tidak bergantung pada kondisi branch yang dapat berubah setelah dokumen dibuat.
+
+## Versi Source yang Didokumentasikan
+
+Versi program yang menjadi dasar dokumentasi adalah:
+
+```text
+hki-v1.0.0
+```
+
+Tag tersebut digunakan sebagai penanda snapshot source code yang menjadi objek dokumentasi.
+
+Seluruh penjelasan arsitektur, pipeline, modul, dependency, input, output, dan workflow pada dokumen ini mengacu pada source code yang tersedia pada tag tersebut.
+
+## Commit Source
+
+Tag `hki-v1.0.0` mengacu pada commit:
+
+```text
+40fe8e299d86358ee0d43373e94b3fe8b044104f
+```
+
+Informasi commit:
+
+```text
+Commit:
+40fe8e299d86358ee0d43373e94b3fe8b044104f
+
+Tanggal:
+17 September 2026
+
+Waktu:
+14:56:29 +0700
+```
+
+Commit SHA berfungsi sebagai identifier unik untuk snapshot source code yang digunakan sebagai dasar dokumentasi.
+
+Dengan menggunakan commit SHA, isi source dapat ditelusuri secara lebih spesifik daripada hanya menggunakan nama branch.
+
+## Hubungan Tag dan Commit
+
+Hubungan antara repository, tag, dan source dapat digambarkan sebagai berikut:
+
+```text
+GitHub Repository
+panda-67/elephant_hydrometeorology
+            │
+            ▼
+       hki-v1.0.0
+            │
+            ▼
+40fe8e299d86358ee0d43373e94b3fe8b044104f
+            │
+            ▼
+     Source snapshot
+            │
+            ├── main.py
+            ├── config.py
+            ├── src/core/
+            ├── src/pipelines/
+            ├── src/services/
+            └── environment.yml
+```
+
+Struktur tersebut memungkinkan dokumen HKI dikaitkan langsung dengan source snapshot tertentu.
+
+## Status Versi
+
+`hki-v1.0.0` digunakan sebagai baseline versi untuk dokumentasi program.
+
+Penamaan:
+
+```text
+hki-v1.0.0
+```
+
+dapat dibaca sebagai:
+
+```text
+hki
+│
+└── penanda versi untuk dokumentasi / snapshot HKI
+
+v1.0.0
+│ │ │
+│ │ └── patch
+│ └── minor
+└──── major
+```
+
+Pada tahap ini, `v1.0.0` digunakan sebagai versi awal yang menjadi dasar dokumentasi dan identifikasi source.
+
+## Source Code yang Termasuk dalam Snapshot
+
+Snapshot `hki-v1.0.0` mencakup struktur utama:
+
+```text
+.gitignore
+README.md
+config.py
+count_tier_area.py
+data/.gitkeep
+environment.yml
+export_assets.py
+generate_countour.py
+generate_track.py
+main.py
+
+src/
+├── __init__.py
+├── R/
+│   └── plot.R
+├── core/
+│   ├── __init__.py
+│   ├── engine.py
+│   ├── hydrology.py
+│   ├── landcover.py
+│   ├── terrain.py
+│   └── vegetation.py
+├── pipelines/
+│   ├── __init__.py
+│   ├── p1_gajah_satellite.py
+│   ├── p2_gajah_hydrology.py
+│   ├── p3_meureudu_upstream.py
+│   └── p4_causal_modeling.py
+└── services/
+    ├── __init__.py
+    ├── export_service.py
+    ├── forensic_service.py
+    ├── topography_service.py
+    └── transect_service.py
+```
+
+File `data/.gitkeep` berfungsi sebagai placeholder direktori data. Hasil runtime tidak dianggap sebagai bagian dari source snapshot utama.
+
+## Komponen Utama Source Snapshot
+
+Source snapshot dapat dikelompokkan menjadi beberapa kategori.
+
+### Entry Point
+
+```text
+main.py
+```
+
+Merupakan script utama untuk menjalankan pipeline analisis.
+
+### Configuration
+
+```text
+config.py
+```
+
+Menyediakan parameter konfigurasi yang digunakan oleh komponen program.
+
+### Core Module
+
+```text
+src/core/
+```
+
+Menyediakan komponen dasar untuk:
+
+* Earth Engine;
+* vegetasi;
+* tutupan lahan;
+* hidrologi;
+* terrain.
+
+### Pipeline Module
+
+```text
+src/pipelines/
+```
+
+Menyediakan empat pipeline analisis utama:
+
+```text
+P1 → Satellite
+P2 → Hydrology
+P3 → Upstream
+P4 → Spatial Causal
+```
+
+### Service Module
+
+```text
+src/services/
+```
+
+Menyediakan fungsi pendukung untuk:
+
+* analisis forensik;
+* ekspor aset;
+* analisis topografi;
+* pembuatan transek.
+
+### Auxiliary Scripts
+
+```text
+count_tier_area.py
+export_assets.py
+generate_countour.py
+generate_track.py
+```
+
+Script tersebut menyediakan workflow tambahan di luar eksekusi utama `main.py`.
+
+## Repository sebagai Sistem Version Control
+
+Git digunakan untuk merekam perubahan source code secara historis.
+
+Setiap perubahan yang dikomit menghasilkan commit baru dengan identifier unik. Tag kemudian dapat digunakan untuk memberikan nama yang lebih mudah diidentifikasi terhadap commit tertentu.
+
+Untuk dokumentasi HKI, mekanisme ini memberikan tiga tingkat identifikasi:
+
+```text
+Repository
+    ↓
+Tag
+    ↓
+Commit SHA
+```
+
+Repository mengidentifikasi lokasi source, tag mengidentifikasi versi yang dituju, sedangkan commit SHA mengidentifikasi snapshot source secara unik.
+
+## Dokumentasi dan Source Code
+
+Dokumentasi HKI tidak menggantikan source code program.
+
+Dokumentasi berfungsi sebagai representasi teknis mengenai:
+
+* identitas program;
+* fungsi;
+* arsitektur;
+* struktur repository;
+* workflow;
+* pipeline;
+* input dan output;
+* environment;
+* prosedur eksekusi;
+* validasi;
+* versi source.
+
+Source code tetap menjadi implementasi program yang sebenarnya.
+
+Dengan demikian, dokumentasi dan repository memiliki hubungan:
+
+```text
+Dokumentasi HKI
+       │
+       │ menjelaskan
+       ▼
+Source Code
+       │
+       │ dikunci oleh
+       ▼
+hki-v1.0.0
+       │
+       ▼
+Commit SHA
+```
+
+## Perubahan Setelah Tag
+
+Dokumentasi ini menggunakan `hki-v1.0.0` sebagai baseline.
+
+Perubahan source code yang dilakukan setelah tag tersebut tidak secara otomatis mengubah isi snapshot yang telah didokumentasikan.
+
+Jika terdapat perubahan pada komponen penting seperti:
+
+```text
+- algoritma pipeline
+- dependency
+- konfigurasi utama
+- struktur database/data
+- sumber dataset
+- metode analisis
+- output
+- arsitektur program
+```
+
+maka perubahan tersebut sebaiknya dicatat dalam commit baru dan, apabila diperlukan, diberikan tag versi berikutnya.
+
+Dengan demikian, versi source yang menjadi dasar dokumentasi tetap dapat dibedakan dari pengembangan berikutnya.
+
+## Strategi Versioning Berikutnya
+
+Pengembangan selanjutnya dapat menggunakan pola versi:
+
+```text
+hki-v1.0.0
+hki-v1.0.1
+hki-v1.1.0
+hki-v2.0.0
+```
+
+Secara umum:
+
+```text
+Patch
+v1.0.x
+```
+
+dapat digunakan untuk perubahan kecil atau perbaikan yang tidak mengubah struktur utama program.
+
+```text
+Minor
+v1.x.0
+```
+
+dapat digunakan untuk penambahan fungsi yang masih kompatibel dengan arsitektur sebelumnya.
+
+```text
+Major
+vx.0.0
+```
+
+dapat digunakan apabila terdapat perubahan besar terhadap arsitektur, API internal, pipeline, atau perilaku utama program.
+
+Skema tersebut merupakan strategi dokumentasi versi dan bukan persyaratan GitHub.
+
+## Identifikasi Environment Version
+
+Selain source version, environment juga memiliki identifier:
+
+```text
+geo-forensic-env
+```
+
+Environment tersebut didefinisikan dalam:
+
+```text
+environment.yml
+```
+
+dengan Python 3.11.
+
+Oleh karena itu, reproduksi source `hki-v1.0.0` sebaiknya dilakukan bersama dengan `environment.yml` yang berasal dari snapshot yang sama.
+
+## Identifikasi Data Eksternal
+
+Program menggunakan dataset eksternal melalui Google Earth Engine.
+
+Oleh karena itu, identitas program tidak hanya bergantung pada source code, tetapi juga pada:
+
+```text
+Source code
+    +
+Configuration
+    +
+Environment
+    +
+Earth Engine project
+    +
+Dataset identifiers
+    +
+Execution date
+```
+
+Dataset tidak disimpan sebagai salinan raster penuh di dalam repository. Program mengambil data melalui identifier dataset pada saat eksekusi.
+
+Kondisi tersebut perlu diperhatikan ketika melakukan reproduksi analisis pada waktu yang berbeda karena dataset eksternal atau layanan Earth Engine dapat mengalami pembaruan.
+
+## Repository dan Integritas Source
+
+Untuk keperluan dokumentasi teknis, source yang dijadikan objek identifikasi adalah source pada:
+
+```text
+Repository:
+panda-67/elephant_hydrometeorology
+
+Tag:
+hki-v1.0.0
+
+Commit:
+40fe8e299d86358ee0d43373e94b3fe8b044104f
+```
+
+Identitas tersebut memberikan referensi yang dapat digunakan untuk menelusuri source code yang dijelaskan dalam dokumen ini.
+
+Jika repository terus berkembang, branch aktif tidak boleh dianggap identik dengan snapshot `hki-v1.0.0`. Untuk reproduksi versi yang didokumentasikan, tag atau commit yang tercantum harus digunakan.
+
+## Metadata Versi
+
+Metadata versi program dapat diringkas sebagai berikut:
+
+| Parameter                 | Nilai                                      |
+| ------------------------- | ------------------------------------------ |
+| Nama program              | Elephant Hydrometeorology                  |
+| Repository                | `panda-67/elephant_hydrometeorology`         |
+| Platform repository       | GitHub                                     |
+| Tag                       | `hki-v1.0.0`                                 |
+| Commit                    | `40fe8e299d86358ee0d43373e94b3fe8b044104f`   |
+| Tanggal commit            | 17 September 2026                          |
+| Waktu commit              | 14:56:29 +0700                             |
+| Runtime                   | Python                                     |
+| Python version            | 3.11                                       |
+| Environment               | `geo-forensic-env`                           |
+| Processing engine         | Google Earth Engine                        |
+| Environment specification | `environment.yml`                            |
+| Entry point               | `main.py`                                    |
+
+## Referensi Repository dalam Dokumentasi
+
+Untuk menjaga keterlacakan, dokumen HKI sebaiknya menyebutkan repository dan tag source secara eksplisit, bukan hanya nama program.
+
+Format identifikasi yang digunakan:
+
+```text
+Elephant Hydrometeorology
+Repository: panda-67/elephant_hydrometeorology
+Version: hki-v1.0.0
+Commit: 40fe8e299d86358ee0d43373e94b3fe8b044104f
+```
+
+Informasi tersebut dapat ditempatkan pada halaman identitas program dan diulang pada bagian versi repository apabila diperlukan.
+
+## Status Dokumentasi
+
+Dokumentasi ini disusun berdasarkan source snapshot `hki-v1.0.0`.
+
+Dengan demikian, status dokumentasi dapat dinyatakan sebagai:
+
+```text
+Documentation baseline
+        │
+        ▼
+hki-v1.0.0
+        │
+        ▼
+40fe8e299d86358ee0d43373e94b3fe8b044104f
+```
+
+Perubahan source setelah snapshot tersebut harus diperlakukan sebagai pengembangan versi berikutnya apabila perubahan tersebut mengubah implementasi yang dijelaskan dalam dokumen.
+
+## Ringkasan Identifikasi
+
+Identitas versi yang digunakan dalam seluruh dokumentasi dapat diringkas menjadi:
+
+```text
+PROGRAM
+Elephant Hydrometeorology
+
+REPOSITORY
+panda-67/elephant_hydrometeorology
+
+VERSION TAG
+hki-v1.0.0
+
+SOURCE COMMIT
+40fe8e299d86358ee0d43373e94b3fe8b044104f
+
+COMMIT DATE
+2026-09-17 14:56:29 +0700
+
+PYTHON ENVIRONMENT
+geo-forensic-env
+
+PYTHON
+3.11
+
+PRIMARY PROCESSING ENGINE
+Google Earth Engine
+```
+
+Identifikasi tersebut menjadi acuan utama untuk menghubungkan dokumen HKI dengan source code yang didokumentasikan.

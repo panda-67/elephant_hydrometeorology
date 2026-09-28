@@ -1,0 +1,332 @@
+## Lingkungan Eksekusi
+
+Program dikembangkan sebagai aplikasi analisis geospasial berbasis Python yang menggunakan Google Earth Engine (GEE) sebagai lingkungan pemrosesan data spasial utama. Pemrosesan citra satelit, analisis tutupan lahan, simulasi hidrologi, dan sebagian besar operasi raster dilakukan secara server-side melalui Earth Engine.
+
+Konfigurasi lingkungan Python untuk repository didefinisikan secara eksplisit dalam berkas `environment.yml`. Nama environment yang digunakan adalah:
+
+```text
+geo-forensic-env
+```
+
+Environment tersebut menggunakan channel `conda-forge` dan menetapkan Python versi 3.11 sebagai basis lingkungan eksekusi.
+
+Konfigurasi repository menetapkan:
+
+```yaml
+name: geo-forensic-env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+```
+
+Penetapan versi Python pada `environment.yml` digunakan untuk menjaga konsistensi lingkungan eksekusi dan membedakan environment program dari versi Python yang mungkin tersedia pada sistem operasi pengguna.
+
+## Platform Pengembangan
+
+README repository mendokumentasikan pengembangan program pada sistem berbasis Arch Linux/CachyOS dengan penggunaan Mamba atau Conda untuk manajemen environment.
+
+Karena sebagian besar dependency merupakan library geospasial dan scientific Python, penggunaan environment terisolasi direkomendasikan untuk menghindari konflik dependency dengan package Python sistem.
+
+Struktur dependency dirancang agar komponen analisis dapat dijalankan sebagai aplikasi command-line Python tanpa membutuhkan instalasi library geospasial secara global.
+
+## Dependency Utama
+
+Dependency yang didefinisikan pada `environment.yml` dapat dikelompokkan berdasarkan fungsi sebagai berikut.
+
+| Kelompok                 | Dependency                 | Fungsi                                       |
+| ------------------------ | -------------------------- | -------------------------------------------- |
+| Runtime                  | `python=3.11`                | Lingkungan eksekusi utama                    |
+| Earth observation        | `earthengine-api`            | Akses Google Earth Engine                    |
+| Geospatial processing    | `geemap`                     | Integrasi dan visualisasi GEE                |
+| Google services          | `google-api-python-client`   | Akses layanan API Google                     |
+| Security/cryptography    | `pycryptodome`               | Dukungan operasi kriptografi                 |
+| HTTP                     | `requests`                   | Komunikasi HTTP                              |
+| Data processing          | `pandas`                     | Pengolahan data tabular                      |
+| Numerical computing      | `numpy`                      | Operasi numerik dan array                    |
+| Scientific computing     | `scipy`                      | Komputasi ilmiah                             |
+| Machine learning         | `scikit-learn`               | Fungsi analisis dan machine learning         |
+| Image processing         | `scikit-image`               | Pemrosesan citra                             |
+| Terrain/GIS              | `whitebox`                   | Analisis geospasial dan terrain              |
+| Terrain/GIS interface    | `whiteboxgui`                | Antarmuka Whitebox                           |
+| Raster GIS               | `rasterio`                   | Pembacaan dan pengolahan raster              |
+| Vector GIS               | `geopandas`                  | Pengolahan data spasial vektor               |
+| Geometry                 | `shapely`                    | Operasi geometri                             |
+| Configuration            | `python-dotenv`              | Pengelolaan konfigurasi berbasis environment |
+| Validation               | `pydantic`                   | Validasi struktur data                       |
+| Configuration validation | `pydantic-settings`          | Pengelolaan konfigurasi berbasis Pydantic    |
+
+Dependency tersebut dideklarasikan dalam repository sebagai berikut:
+
+```yaml
+dependencies:
+  - python=3.11
+  - earthengine-api
+  - geemap
+  - google-api-python-client
+  - pycryptodome
+  - requests
+  - pandas
+  - numpy
+  - scipy
+  - scikit-learn
+  - scikit-image
+  - whitebox
+  - whiteboxgui
+  - rasterio
+  - geopandas
+  - shapely
+  - python-dotenv
+  - pydantic
+  - pydantic-settings
+```
+
+Repository tidak mengunci seluruh dependency pada nomor versi individual. Oleh karena itu, `environment.yml` berfungsi terutama sebagai deklarasi environment dan daftar dependency, bukan sebagai lockfile reproduksibilitas absolut.
+
+## Google Earth Engine
+
+Google Earth Engine merupakan dependency eksternal utama program.
+
+Library Python `earthengine-api` digunakan oleh komponen `GEEEngine` untuk melakukan inisialisasi koneksi dan menjalankan operasi terhadap objek Earth Engine.
+
+Inisialisasi dilakukan dengan pola:
+
+```python
+ee.Initialize(project=config.PROJECT_ID)
+```
+
+Dengan demikian, konfigurasi program membutuhkan project ID Google Cloud yang sesuai pada konfigurasi aplikasi.
+
+Jika proses inisialisasi gagal, `GEEEngine` menghentikan proses dengan `RuntimeError` dan menyertakan pesan kegagalan koneksi. Mekanisme tersebut mencegah pipeline melanjutkan proses ketika koneksi terhadap Earth Engine belum tersedia.
+
+## Otentikasi Earth Engine
+
+Sebelum menjalankan program untuk pertama kali pada suatu environment, akun pengguna harus memiliki akses yang sesuai ke Google Earth Engine.
+
+README repository mendokumentasikan proses autentikasi menggunakan Earth Engine CLI:
+
+```bash
+earthengine authenticate
+```
+
+Setelah autentikasi berhasil, library Python dapat melakukan inisialisasi menggunakan project yang ditentukan oleh konfigurasi aplikasi.
+
+Alur dependency untuk pemrosesan Earth Engine dapat diringkas sebagai:
+
+```text
+User
+  │
+  ├── Earth Engine authentication
+  │
+  ▼
+Google Earth Engine
+  │
+  ├── HydroSHEDS
+  ├── Sentinel / satellite collections
+  ├── ESA WorldCover
+  ├── Dynamic World
+  ├── CHIRPS
+  └── DEM
+  │
+  ▼
+Python analysis pipeline
+```
+
+## Dependency Geospasial
+
+Komponen geospasial lokal terutama disediakan oleh `geopandas`, `shapely`, dan `rasterio`.
+
+`geopandas` digunakan untuk kebutuhan data spasial berbasis vektor, sedangkan `shapely` menyediakan operasi geometri. `rasterio` digunakan untuk kebutuhan raster pada workflow yang melakukan pemrosesan atau ekspor data raster secara lokal.
+
+Library `geemap` menyediakan integrasi Python dengan Earth Engine dan mendukung kebutuhan visualisasi serta pengelolaan objek geospasial Earth Engine.
+
+Selain itu, `whitebox` dan `whiteboxgui` disediakan sebagai dependency untuk kebutuhan analisis terrain/geospasial tambahan.
+
+## Dependency Scientific Computing
+
+Program juga menyediakan dependency scientific Python yang mendukung pemrosesan numerik dan analitis.
+
+`numpy` digunakan sebagai fondasi operasi array dan numerik. `scipy` menyediakan fungsi komputasi ilmiah tambahan, sedangkan `pandas` digunakan untuk pengolahan data tabular.
+
+`scikit-learn` dan `scikit-image` tersedia sebagai dependency untuk kebutuhan analisis data dan pemrosesan citra yang lebih lanjut.
+
+Tidak seluruh dependency tersebut harus dipanggil oleh setiap script. Sebagian digunakan oleh komponen tertentu atau disediakan sebagai bagian dari environment analisis secara keseluruhan.
+
+## Dependency Konfigurasi dan Validasi
+
+Program menyediakan:
+
+```text
+python-dotenv
+pydantic
+pydantic-settings
+```
+
+Dependency tersebut mendukung pengelolaan konfigurasi dan validasi parameter aplikasi.
+
+Konfigurasi utama program berada pada `config.py` dan digunakan oleh berbagai komponen, termasuk `GEEEngine` dan pipeline analisis.
+
+Pendekatan konfigurasi terpusat memungkinkan parameter seperti project Earth Engine, koordinat outlet, tanggal analisis, dan parameter temporal digunakan secara konsisten oleh berbagai modul.
+
+## Instalasi Environment
+
+Environment dapat dibuat menggunakan Micromamba atau Conda berdasarkan berkas `environment.yml`.
+
+Contoh menggunakan Micromamba:
+
+```bash
+git clone https://github.com/panda-67/elephant_hydrometeorology
+cd elephant_hydrometeorology
+
+micromamba create -f environment.yml
+micromamba activate geo-forensic-env
+```
+
+Setelah environment aktif, autentikasi Earth Engine dilakukan:
+
+```bash
+earthengine authenticate
+```
+
+Verifikasi dasar environment dapat dilakukan dengan:
+
+```bash
+python --version
+```
+
+dan:
+
+```bash
+python -c "import ee; print('Earth Engine API tersedia')"
+```
+
+## Persyaratan Direktori Kerja
+
+Program menggunakan struktur direktori relatif terhadap root repository.
+
+Direktori output utama yang digunakan selama runtime meliputi:
+
+```text
+data/output_metrics/
+data/output_rasters/
+data/output_topography/
+data/output_vectors/
+```
+
+Pada snapshot source `hki-v1.0.0`, direktori runtime tersebut tidak berisi hasil analisis yang disimpan sebagai bagian dari source tree. Repository hanya mempertahankan `data/.gitkeep` sebagai placeholder.
+
+Beberapa service membuat direktori output secara otomatis menggunakan `os.makedirs(..., exist_ok=True)` sebelum menulis hasil.
+
+Dengan demikian, pengguna tidak harus menyediakan seluruh direktori output secara manual selama script yang dijalankan memiliki hak tulis terhadap direktori repository.
+
+## Dependency terhadap Data Eksternal
+
+Selain dependency Python, program bergantung pada dataset eksternal yang tersedia melalui Google Earth Engine.
+
+Dataset tersebut mencakup antara lain:
+
+```text
+WWF/HydroSHEDS/v1/Basins/hybas_12
+ESA WorldCover
+Google Dynamic World
+CHIRPS Daily Rainfall
+DEM
+koleksi citra satelit untuk analisis vegetasi
+```
+
+Data tersebut tidak disimpan sebagai raster mentah di dalam repository. Program mengambil data berdasarkan parameter wilayah dan periode analisis ketika pipeline dijalankan.
+
+Pendekatan ini mengurangi kebutuhan penyimpanan data raster berukuran besar pada repository dan menjadikan Earth Engine sebagai sumber data utama untuk proses analisis.
+
+## Reproduksibilitas Lingkungan
+
+Reproduksibilitas program ditopang oleh beberapa komponen:
+
+1. environment Python didefinisikan dalam `environment.yml`;
+2. versi major/minor Python ditetapkan pada Python 3.11;
+3. dependency utama dideklarasikan secara eksplisit;
+4. konfigurasi analisis dipusatkan pada `config.py`;
+5. source code dikunci pada tag `hki-v1.0.0`;
+6. dataset utama dipanggil menggunakan identifier Earth Engine;
+7. workflow analisis dijalankan melalui pipeline yang terstruktur.
+
+Namun, `environment.yml` tidak mengunci nomor versi seluruh package secara individual. Selain itu, dataset Earth Engine merupakan resource eksternal yang dapat mengalami perubahan katalog atau pembaruan data.
+
+Oleh karena itu, reproduksibilitas yang dimaksud pada dokumentasi ini adalah reproduksibilitas berdasarkan source code, konfigurasi, environment specification, dan dataset identifier yang tersedia pada saat eksekusi, bukan jaminan byte-for-byte reproducibility terhadap seluruh layanan eksternal.
+
+## Pemisahan Environment Program dan Environment Dokumentasi
+
+Dokumentasi program ini dibuat menggunakan Quarto dan toolchain dokumentasi yang terpisah dari environment runtime program.
+
+Dengan demikian terdapat dua konteks environment:
+
+```text
+Environment Program
+└── geo-forensic-env
+    ├── Python 3.11
+    ├── Earth Engine API
+    ├── geemap
+    ├── scientific Python
+    └── geospatial Python
+
+Environment Dokumentasi
+└── Quarto / Pandoc / LaTeX / R / Python
+    └── digunakan untuk menghasilkan dokumen HKI
+```
+
+Pemisahan tersebut penting agar dependency yang digunakan untuk menghasilkan dokumen tidak dianggap sebagai dependency yang wajib dimiliki oleh program `elephant_hydrometeorology`.
+
+## Ringkasan Persyaratan Eksekusi
+
+Persyaratan utama untuk menjalankan program dapat dirangkum sebagai berikut:
+
+| Komponen         | Persyaratan                                                                   |
+| ---------------- | ----------------------------------------------------------------------------- |
+| Operating system | Sistem yang mendukung Conda/Micromamba dan dependency geospasial              |
+| Python           | 3.11                                                                          |
+| Environment      | `geo-forensic-env`                                                              |
+| Package manager  | Conda/Micromamba                                                              |
+| Earth Engine     | Akun dan autentikasi aktif                                                    |
+| Google Cloud     | Project ID yang sesuai dengan konfigurasi                                     |
+| Internet         | Diperlukan untuk akses Earth Engine dan layanan eksternal                     |
+| Storage          | Hak tulis pada repository untuk direktori output                              |
+| GIS desktop      | QGIS bersifat pendukung, terutama untuk pemeriksaan GeoJSON dan hasil spasial |
+| Source version   | `hki-v1.0.0` untuk dokumentasi snapshot ini                                     |
+
+Dengan environment tersebut, program dapat menjalankan pipeline analisis utama, melakukan reduksi statistik server-side, menghasilkan laporan metrik, dan mengekspor hasil spasial sesuai fungsi masing-masing script.
+
+## Catatan Kompatibilitas
+
+Environment yang didokumentasikan dalam bagian ini mengikuti deklarasi resmi pada `environment.yml` pada tag `hki-v1.0.0`.
+
+Apabila program dikembangkan lebih lanjut dengan perubahan versi Python, dependency, dataset, atau API Google Earth Engine, perubahan tersebut sebaiknya dicatat dalam versi repository berikutnya.
+
+Untuk kepentingan dokumentasi HKI, kombinasi berikut merupakan identitas teknis environment yang didokumentasikan:
+
+```text
+Program:
+elephant_hydrometeorology
+
+Source tag:
+hki-v1.0.0
+
+Python:
+3.11
+
+Conda environment:
+geo-forensic-env
+
+Earth Engine:
+Google Earth Engine Python API
+
+Primary processing:
+Server-side Google Earth Engine
+
+Geospatial support:
+GeoPandas, Shapely, Rasterio, GeoMap,
+Whitebox / WhiteboxGUI
+
+Scientific computing:
+NumPy, SciPy, Pandas,
+Scikit-learn, Scikit-image
+```

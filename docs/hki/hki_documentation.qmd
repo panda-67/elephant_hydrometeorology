@@ -1,0 +1,62 @@
+---
+title: "Dokumentasi Program Komputer"
+subtitle: "Elephant Hydrometeorology"
+author: "Samsul Muarrif, S.Si"
+date: "28 September 2026"
+---
+
+# Identitas Program
+
+{{< include sections/01-identitas.qmd >}}
+
+# Deskripsi Program
+
+{{< include sections/02-deskripsi.qmd >}}
+
+# Tujuan dan Fungsi
+
+{{< include sections/03-tujuan-fungsi.qmd >}}
+
+# Arsitektur Program
+
+{{< include sections/04-arsitektur.qmd >}}
+
+# Struktur Repository
+
+{{< include sections/05-struktur-repository.qmd >}}
+
+# Workflow Program
+
+{{< include sections/06-workflow.qmd >}}
+
+# Dokumentasi Modul
+
+{{< include sections/07-modul.qmd >}}
+
+# Dokumentasi Pipeline
+
+{{< include sections/08-pipeline.qmd >}}
+
+# Data Input dan Output
+
+{{< include sections/09-data-input-output.qmd >}}
+
+# Environment dan Dependency
+
+{{< include sections/10-environment.qmd >}}
+
+# Cara Menjalankan Program
+
+{{< include sections/11-cara-menjalankan.qmd >}}
+
+# Validasi dan Bukti Eksekusi
+
+{{< include sections/12-validasi.qmd >}}
+
+# Informasi Versi dan Repository
+
+{{< include sections/13-versi-repository.qmd >}}
+
+# Lampiran Source Code
+
+{{< include sections/14-lampiran-source-code.qmd >}}

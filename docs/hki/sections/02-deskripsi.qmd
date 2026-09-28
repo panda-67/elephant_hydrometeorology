@@ -1,0 +1,156 @@
+## Gambaran Umum
+
+**Elephant Hydrometeorology** merupakan program komputer untuk melakukan analisis
+spasial yang mengintegrasikan informasi vegetasi, tutupan hutan, topografi,
+curah hujan, dan hidrologi.
+
+Program dikembangkan untuk mendukung analisis kondisi bentang alam dan
+identifikasi hubungan spasial antara perubahan tutupan vegetasi, karakteristik
+medan, respons hidrologi, serta area yang memiliki nilai penting dalam analisis
+konektivitas lanskap.
+
+Pemrosesan utama dilakukan menggunakan Google Earth Engine sehingga data
+penginderaan jauh dan data lingkungan dapat dianalisis pada wilayah kajian secara
+terintegrasi.
+
+## Wilayah Kajian
+
+Implementasi program pada versi yang didokumentasikan menggunakan wilayah kajian
+**Tangse–Meureudu** dan area hulu yang terkait.
+
+Wilayah kajian digunakan sebagai *region of interest* (ROI) untuk proses delineasi
+hidrologi, analisis vegetasi, analisis tutupan lahan, simulasi limpasan, analisis
+topografi, dan integrasi hasil.
+
+## Pendekatan Analisis
+
+Program menggunakan pendekatan modular. Analisis tidak dilakukan sebagai satu proses tunggal, tetapi dibagi menjadi beberapa komponen yang memiliki fungsi spesifik.
+
+Secara umum, struktur analisis terdiri atas:
+
+1. konfigurasi parameter;
+2. pembentukan dan pengelolaan ROI;
+3. pengambilan dan pengolahan data penginderaan jauh;
+4. analisis vegetasi;
+5. analisis tutupan dan kehilangan hutan;
+6. analisis topografi;
+7. analisis hidrologi;
+8. integrasi hasil melalui beberapa pipeline;
+9. validasi metrik;
+10. penyimpanan hasil analisis.
+
+Pendekatan modular memungkinkan setiap komponen digunakan atau dikembangkan secara terpisah tanpa harus mengubah keseluruhan struktur program.
+
+## Data Lingkungan
+
+Program memanfaatkan beberapa sumber data geospasial dan hidrometeorologi.
+
+Data utama yang digunakan dalam implementasi meliputi:
+
+| Data                 | Fungsi                                     |
+|----------------------|--------------------------------------------|
+| Sentinel-2           | Analisis vegetasi dan indeks spektral      |
+| Landsat              | Analisis tambahan kondisi vegetasi         |
+| Sentinel-1           | Informasi penginderaan jauh berbasis radar |
+| ESA WorldCover       | Informasi tutupan lahan baseline           |
+| Google Dynamic World | Informasi tutupan lahan berbasis temporal  |
+| DEM                  | Analisis elevasi dan topografi             |
+| CHIRPS Daily         | Data curah hujan harian                    |
+| HydroSHEDS           | Delineasi dan informasi hidrologi          |
+
+Dataset diproses sesuai kebutuhan masing-masing modul dan pipeline.
+
+## Analisis Vegetasi
+
+Komponen vegetasi menggunakan data penginderaan jauh untuk menghasilkan informasi kondisi vegetasi.
+
+Indeks yang digunakan antara lain:
+
+- **NDVI (Normalized Difference Vegetation Index)** untuk menggambarkan kondisi kehijauan atau vigor vegetasi;
+- **NDMI (Normalized Difference Moisture Index)** untuk memberikan informasi terkait kondisi kelembapan vegetasi.
+
+Pemrosesan mencakup penyaringan citra dan pembentukan komposit sesuai periode analisis.
+
+## Analisis Tutupan dan Kehilangan Hutan
+
+Program menggunakan data ESA WorldCover dan Google Dynamic World untuk memperoleh informasi kelas tutupan lahan.
+
+Kelas hutan kemudian digunakan untuk membentuk *forest mask*.
+
+Perubahan dari kondisi hutan menjadi non-hutan digunakan untuk membentuk informasi **forest loss** antara kondisi sebelum dan sesudah periode yang dianalisis.
+
+## Analisis Hidrologi
+
+Komponen hidrologi menggunakan pendekatan **Soil Conservation Service Curve Number (SCS-CN)** untuk mengestimasi limpasan permukaan berdasarkan karakteristik tutupan lahan, kondisi hidrologi, dan curah hujan.
+
+Data curah hujan harian dari CHIRPS digunakan sebagai input meteorologis dalam simulasi.
+
+Hasil analisis digunakan sebagai salah satu komponen bukti dalam integrasi spasial.
+
+## Analisis Topografi
+
+Program menyediakan analisis topografi berbasis digital elevation model (DEM), termasuk:
+
+- elevasi;
+- kemiringan lereng;
+- aspek;
+- hillshade;
+- kontur.
+
+Analisis topografi digunakan untuk memberikan konteks medan terhadap hasil analisis vegetasi, hidrologi, dan konektivitas lanskap.
+
+## Integrasi Bukti Spasial
+
+Hasil beberapa analisis kemudian diintegrasikan melalui pipeline pemodelan spasial.
+
+Salah satu keluaran utama integrasi tersebut adalah:
+
+```text
+causal_evidence_tier
+```
+
+yang merepresentasikan tingkat bukti spasial berdasarkan hasil analisis yang dikombinasikan.
+
+Nilai tier digunakan sebagai informasi spasial untuk membedakan tingkat keterkaitan bukti yang dihasilkan oleh pipeline.
+
+## Analisis Koridor dan Transek
+
+Selain pipeline analisis utama, program menyediakan komponen untuk menghasilkan kandidat area dan transek berdasarkan kombinasi karakteristik medan.
+
+Parameter yang dapat digunakan mencakup:
+
+* elevasi;
+* kemiringan;
+* aspek;
+* luas minimum area;
+* panjang transek;
+* bobot parameter;
+* *cost surface*.
+
+Komponen ini digunakan sebagai fungsi pendukung untuk analisis konektivitas spasial dan perencanaan transek lapangan.
+
+## Bentuk Keluaran
+
+Program menghasilkan beberapa jenis keluaran, antara lain:
+
+* metrik analisis;
+* file JSON;
+* raster;
+* GeoTIFF;
+* GeoJSON;
+* hasil analisis topografi;
+* informasi luas berdasarkan *causal evidence tier*.
+
+Sebagian keluaran dibuat pada saat program dijalankan dan tidak disimpan sebagai bagian dari source code repository.
+
+Struktur direktori runtime dapat mencakup:
+
+```text
+data/
+├── output_metrics/
+├── output_rasters/
+├── output_topography/
+└── output_vectors/
+```
+
+Direktori tersebut merupakan direktori keluaran runtime dan berbeda dari struktur source repository pada snapshot `hki-v1.0.0`.

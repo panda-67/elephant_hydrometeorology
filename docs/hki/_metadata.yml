@@ -1,0 +1,74 @@
+format:
+  pdf:
+    documentclass: scrreprt
+    pdf-engine: xelatex
+    page-numbering: arabic
+
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    colorlinks: true
+
+    geometry:
+      - top=25mm
+      - bottom=25mm
+      - left=30mm
+      - right=25mm
+
+    # Font: serif untuk teks, sans untuk judul, monospace yang memuat
+    # karakter kotak/panah (─ │ ┌ ▼ ►) agar diagram teks tampil benar.
+    mainfont: Noto Serif
+    sansfont: Fira Sans
+    monofont: Noto Sans Mono
+    monofontoptions:
+      - Scale=MatchLowercase
+    fontsize: 10pt
+    linestretch: 1.0
+
+    code-line-numbers: false
+    code-block-bg: true
+
+    include-in-header:
+      text: |
+        % --- Tabel: kolom mengikuti lebar halaman
+        \usepackage{tabularx}
+        \usepackage{array}
+        \usepackage{booktabs}
+
+        \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+        % --- Judul: ringkas, sans-serif, tanpa awalan "Bab N"
+        \KOMAoptions{headings=small,chapterprefix=false}
+        \setkomafont{disposition}{\sffamily\bfseries}
+        \setkomafont{chapter}{\sffamily\bfseries\Large}
+
+        % --- Daftar isi: ruang nomor lebih lega
+        \RedeclareSectionCommand[tocnumwidth=1.4em]{chapter}
+        \RedeclareSectionCommand[tocnumwidth=2.4em]{section}
+        \RedeclareSectionCommand[tocnumwidth=3.4em]{subsection}
+
+        \usepackage{enumitem}
+        \setlist{itemsep=1pt,topsep=3pt,parsep=0pt,partopsep=0pt}
+
+        % --- Blok kode / diagram: lebih kecil dan rapat
+        \AddToHook{env/verbatim/begin}{\small\setlength{\baselineskip}{7.0pt}}
+        \AddToHook{env/Highlighting/begin}{\small\setlength{\baselineskip}{7.6pt}}
+
+        % --- Jarak paragraf dan tabel
+        \AtBeginDocument{%
+          \setlength{\parindent}{0pt}%
+          \setlength{\parskip}{0.45\baselineskip plus 1pt minus 0.5pt}%
+          \renewcommand{\arraystretch}{1.08}%
+          \setlength{\abovedisplayskip}{5pt plus 2pt minus 2pt}%
+          \setlength{\belowdisplayskip}{5pt plus 2pt minus 2pt}%
+        }
+
+lang: id
+
+crossref:
+  sec-prefix: Bab
+
+execute:
+  echo: true
+  warning: false
+  message: false

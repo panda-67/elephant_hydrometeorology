@@ -1,0 +1,436 @@
+## Gambaran Arsitektur
+
+Elephant Hydrometeorology menggunakan arsitektur perangkat lunak modular. Komponen program dipisahkan berdasarkan fungsi sehingga proses konfigurasi, analisis inti, pipeline, service, dan eksekusi dapat dikelola secara terpisah.
+
+Secara konseptual, arsitektur program terdiri atas enam lapisan utama:
+
+1. konfigurasi;
+2. analytical core;
+3. analytical pipelines;
+4. services;
+5. entry points;
+6. runtime outputs.
+
+Hubungan antar-komponen dapat digambarkan sebagai berikut.
+
+```text
+                         ┌─────────────────────┐
+                         │     config.py       │
+                         │ Configuration       │
+                         └──────────┬──────────┘
+                                    │
+                                    ▼
+                    ┌────────────────────────────┐
+                    │       src/core/            │
+                    │                            │
+                    │  ┌────────┐  ┌──────────┐  │
+                    │  │ engine │  │vegetation│  │
+                    │  └────────┘  └──────────┘  │
+                    │  ┌─────────┐ ┌─────────┐   │
+                    │  │landcover│ │hydrology│   │
+                    │  └─────────┘ └─────────┘   │
+                    │  ┌────────┐                │
+                    │  │ terrain│                │
+                    │  └────────┘                │
+                    └────────────┬───────────────┘
+                                 │
+                                 ▼
+                  ┌──────────────────────────────┐
+                  │       src/pipelines/         │
+                  │                              │
+                  │ P1 → Vegetation              │
+                  │ P2 → Hydrology               │
+                  │ P3 → Forest loss / slope     │
+                  │ P4 → Causal evidence         │
+                  └──────────────┬───────────────┘
+                                 │
+                                 ▼
+
+                    ┌─────────────────────────┐
+                    │      src/services/      │
+                    │                         │
+                    │ Forensic Analysis       │
+                    │ Export Assets           │
+                    │ Topography              │
+                    │ Transect                │
+                    └────────────┬────────────┘
+                                 │
+                  ┌──────────────┴──────────────┐
+                  │                             │
+                  ▼                             ▼
+        ┌──────────────────┐          ┌──────────────────┐
+        │    main.py       │          │ Utility Scripts  │
+        │ Main Entry Point │          │                  │
+        └────────┬─────────┘          │ • count_tier_area│
+                 │                    │ • export_assets  │
+                 │                    │ • generate...    │
+                 │                    └────────┬─────────┘
+                 └──────────────┬──────────────┘
+                                ▼
+                     ┌──────────────────────┐
+                     │   Runtime Outputs    │
+                     │                      │
+                     │ • Metrics / JSON     │
+                     │ • Raster / GeoTIFF   │
+                     │ • GeoJSON            │
+                     │ • Topography outputs │
+                     └──────────────────────┘
+````
+
+Diagram tersebut menunjukkan hubungan fungsional antar-komponen. Tidak semua service atau utility script merupakan bagian dari workflow default `python main.py`.
+
+## Lapisan Konfigurasi
+
+File:
+
+```text
+config.py
+```
+
+berfungsi sebagai pusat konfigurasi program.
+
+Parameter yang digunakan oleh komponen analisis dapat dikelola melalui konfigurasi sehingga parameter tidak harus ditulis ulang pada setiap modul.
+
+Pemisahan konfigurasi dari kode analisis memberikan dua keuntungan utama:
+
+* parameter analisis dapat diubah tanpa memodifikasi seluruh komponen;
+* konfigurasi dapat digunakan sebagai referensi eksplisit untuk menjalankan analisis pada wilayah dan kondisi tertentu.
+
+## Analytical Core
+
+Komponen analytical core berada pada:
+
+```text
+src/core/
+```
+
+Komponen ini menyediakan fungsi dasar yang digunakan oleh pipeline.
+
+### `engine.py`
+
+`GEEEngine` merupakan komponen dasar yang menangani interaksi dengan Google Earth Engine.
+
+Fungsi utamanya mencakup:
+
+* inisialisasi dan autentikasi Google Earth Engine;
+* pembentukan ROI berbasis informasi hidrologi;
+* pemanfaatan HydroSHEDS;
+* operasi reduksi citra;
+* ekspor atau penyimpanan informasi spasial;
+* fungsi pendukung pembentukan laporan metrik.
+
+Engine menjadi salah satu lapisan dasar yang digunakan oleh service dan pipeline.
+
+### `vegetation.py`
+
+`VegetationAnalyzer` menangani pengolahan data penginderaan jauh yang berkaitan dengan kondisi vegetasi.
+
+Sumber data yang digunakan dalam komponen ini mencakup:
+
+* Sentinel-2;
+* Landsat;
+* Sentinel-1.
+
+Komponen menyediakan fungsi untuk pemrosesan citra serta pembentukan indeks seperti NDVI dan NDMI.
+
+### `landcover.py`
+
+`LandCoverAnalyzer` menangani data klasifikasi tutupan lahan.
+
+Sumber utama yang digunakan adalah:
+
+* ESA WorldCover 2020;
+* Google Dynamic World.
+
+Komponen ini juga menyediakan fungsi untuk:
+
+* membuat forest mask;
+* membuat non-forest mask;
+* mengidentifikasi forest loss;
+* menghitung informasi luas berdasarkan pixel area.
+
+### `hydrology.py`
+
+Modul hidrologi menangani analisis hubungan antara karakteristik permukaan dan curah hujan.
+
+Metode utama yang diterapkan adalah **Soil Conservation Service Curve Number (SCS-CN)**.
+
+Komponen ini juga mengambil informasi curah hujan harian dari CHIRPS dan menghasilkan estimasi limpasan permukaan.
+
+### `terrain.py`
+
+Modul terrain menangani informasi topografi yang berasal dari digital elevation model (DEM).
+
+Parameter yang dapat dihasilkan meliputi:
+
+* elevasi;
+* slope;
+* aspect;
+* hillshade.
+
+Modul ini digunakan terutama sebagai komponen pendukung analisis spasial dan pipeline yang memerlukan karakteristik medan.
+
+## Lapisan Analytical Pipeline
+
+Pipeline berada pada:
+
+```text
+src/pipelines/
+```
+
+Pipeline menggabungkan beberapa komponen analytical core untuk menjalankan tahapan analisis yang lebih spesifik.
+
+### P1 — Analisis Vegetasi Multitemporal
+
+File:
+
+```text
+src/pipelines/p1_gajah_satellite.py
+```
+
+Pipeline P1 mengintegrasikan data penginderaan jauh untuk menganalisis perubahan kondisi vegetasi secara temporal.
+
+Tahapan utamanya meliputi pengolahan citra, pembentukan indeks vegetasi, dan perbandingan kondisi pada periode yang dianalisis.
+
+Keluaran P1 digunakan sebagai salah satu sumber bukti dalam analisis berikutnya.
+
+### P2 — Analisis Hidrologi
+
+File:
+
+```text
+src/pipelines/p2_gajah_hydrology.py
+```
+
+Pipeline P2 mengintegrasikan informasi tutupan lahan, karakteristik hidrologi, dan curah hujan.
+
+Pendekatan SCS-CN digunakan untuk menghasilkan estimasi limpasan permukaan berdasarkan kondisi wilayah kajian dan curah hujan yang tersedia.
+
+### P3 — Analisis Hulu dan Forest Loss
+
+File:
+
+```text
+src/pipelines/p3_meureudu_upstream.py
+```
+
+Pipeline P3 digunakan untuk mengintegrasikan informasi kehilangan hutan dengan kondisi topografi, termasuk area dengan kemiringan lereng lebih dari ambang yang ditetapkan oleh implementasi.
+
+Hasil pipeline digunakan sebagai bukti spasial tambahan dalam analisis integratif.
+
+### P4 — Causal Modeling
+
+File:
+
+```text
+src/pipelines/p4_causal_modeling.py
+```
+
+Pipeline P4 merupakan tahap integrasi beberapa keluaran analisis sebelumnya.
+
+Pipeline ini menghasilkan layer:
+
+```text
+causal_evidence_tier
+```
+
+dengan nilai tier yang merepresentasikan tingkat kombinasi bukti spasial berdasarkan aturan yang diterapkan dalam source code.
+
+P4 menjadi salah satu tahap akhir pada workflow analisis utama.
+
+## Lapisan Services
+
+Komponen service berada pada:
+
+```text
+src/services/
+```
+
+Service menyediakan fungsi orkestrasi dan operasi pendukung yang tidak ditempatkan langsung di dalam analytical core.
+
+### `forensic_service.py`
+
+`ForensicAnalysisService` berfungsi sebagai orchestrator analisis.
+
+Service ini bertanggung jawab untuk:
+
+* membentuk ROI;
+* menjalankan pipeline analisis;
+* mengelola hasil P1–P4;
+* melakukan validasi terhadap metrik;
+* menyediakan informasi yang diperlukan untuk pelaporan hasil.
+
+Komponen ini merupakan penghubung penting antara analytical pipeline dan entry point program.
+
+### `export_service.py`
+
+`ExportAssetsService` menyediakan fungsi untuk mengekspor hasil analisis spasial.
+
+Keluaran yang diekspor dapat berupa raster yang digunakan kembali dalam perangkat lunak SIG atau workflow analisis berikutnya.
+
+Pada source snapshot yang didokumentasikan, konfigurasi ekspor raster P1 secara eksplisit tidak diaktifkan, sedangkan keluaran P2–P4 tetap dapat diproses oleh service ekspor.
+
+### `topography_service.py`
+
+`TopographyService` menyediakan workflow pengolahan topografi yang lebih lengkap dibandingkan fungsi dasar pada `terrain.py`.
+
+Komponen ini dapat digunakan untuk menghasilkan:
+
+* DEM;
+* slope;
+* hillshade;
+* contour.
+
+Service ini digunakan oleh utility script khusus dan bukan bagian dari eksekusi default `main.py`.
+
+### `transect_service.py`
+
+`TransectGenerator` menyediakan fungsi untuk analisis kandidat area dan pembuatan transek.
+
+Komponen dapat menggunakan:
+
+* elevasi;
+* slope;
+* aspect;
+* minimum area;
+* panjang transek;
+* cost surface;
+* least-cost path.
+
+Service ini merupakan komponen pendukung untuk analisis konektivitas dan perencanaan transek.
+
+## Entry Point
+
+Program memiliki beberapa entry point.
+
+Entry point utama adalah:
+
+```text
+main.py
+```
+
+Eksekusi entry point utama dilakukan dengan:
+
+```bash
+python main.py
+```
+
+Selain entry point utama, repository menyediakan script khusus:
+
+```text
+count_tier_area.py
+export_assets.py
+generate_countour.py
+generate_track.py
+```
+
+Masing-masing script memiliki fungsi yang berbeda.
+
+| Entry point            | Fungsi                                             |
+| ---------------------- | -------------------------------------------------- |
+| `main.py`                | Menjalankan workflow analisis utama                |
+| `count_tier_area.py`     | Menghitung luas berdasarkan `causal_evidence_tier`   |
+| `export_assets.py`       | Menjalankan ekspor raster ke Google Drive          |
+| `generate_countour.py`   | Menghasilkan keluaran topografi dan kontur         |
+| `generate_track.py`      | Menghasilkan cost surface dan kandidat transek     |
+
+## Alur Ketergantungan
+
+Secara umum, ketergantungan komponen mengikuti pola:
+
+```text
+Configuration
+      │
+      ▼
+Core Analytical Components
+      │
+      ▼
+Analytical Pipelines
+      │
+      ▼
+Services / Orchestration
+      │
+      ▼
+Entry Points
+      │
+      ▼
+Runtime Outputs
+```
+
+Struktur tersebut memisahkan fungsi dasar dari fungsi orkestrasi.
+
+Sebagai konsekuensinya, perubahan pada suatu modul analytical core dapat memengaruhi pipeline yang menggunakan modul tersebut, sedangkan utility tertentu dapat berjalan secara independen melalui service yang relevan.
+
+## Workflow Default
+
+Workflow default yang dijalankan melalui:
+
+```bash
+python main.py
+```
+
+secara umum mengikuti urutan:
+
+```text
+Google Earth Engine initialization
+            │
+            ▼
+HydroSHEDS / Hydro ROI
+            │
+            ▼
+P1 — Satellite / Vegetation
+            │
+            ▼
+P2 — Hydrology / Runoff
+            │
+            ▼
+P3 — Upstream Forest Loss
+            │
+            ▼
+P4 — Causal Evidence
+            │
+            ▼
+Server-side reduction
+            │
+            ▼
+Metric validation
+            │
+            ▼
+Console report
+            │
+            ▼
+JSON / spatial outputs
+```
+
+Urutan tersebut merupakan representasi workflow utama. Modul `TopographyService`, `TransectGenerator`, `ExportAssetsService`, dan script R tidak secara otomatis dijalankan oleh `main.py`.
+
+## Runtime Output
+
+Keluaran program dibuat pada saat workflow dijalankan.
+
+Direktori runtime yang digunakan oleh implementasi meliputi:
+
+```text
+data/output_metrics/
+data/output_rasters/
+data/output_topography/
+data/output_vectors/
+```
+
+Direktori tersebut tidak merupakan bagian dari source snapshot `hki-v1.0.0`; pada snapshot repository, direktori `data/` hanya mempertahankan `.gitkeep`.
+
+Pemisahan antara source code dan runtime output memungkinkan repository tetap berisi kode program dan konfigurasi tanpa harus menyimpan seluruh hasil analisis yang dihasilkan setiap eksekusi.
+
+## Komponen Visualisasi R
+
+Repository juga menyediakan:
+
+```text
+src/R/plot.R
+```
+
+Komponen tersebut digunakan untuk visualisasi atau pengolahan hasil menggunakan R.
+
+Script R merupakan komponen pendukung dan tidak menjadi bagian dari workflow default `python main.py`.
+
+Dengan demikian, bahasa R berfungsi sebagai komponen analisis/visualisasi tambahan, sedangkan Python merupakan bahasa utama untuk implementasi workflow program.

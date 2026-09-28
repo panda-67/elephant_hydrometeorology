@@ -1,0 +1,632 @@
+## Struktur Modul
+
+Modul program dikelompokkan menjadi dua kelompok utama:
+
+1. **Core modules**, yang menyediakan fungsi analisis dasar.
+2. **Service modules**, yang mengatur orkestrasi dan fungsi pendukung.
+
+Struktur modul adalah:
+
+```text
+src/
+├── core/
+│   ├── engine.py
+│   ├── hydrology.py
+│   ├── landcover.py
+│   ├── terrain.py
+│   └── vegetation.py
+│
+└── services/
+    ├── export_service.py
+    ├── forensic_service.py
+    ├── topography_service.py
+    └── transect_service.py
+````
+
+## Modul `engine.py`
+
+Lokasi:
+
+```text
+src/core/engine.py
+```
+
+Modul ini menyediakan komponen `GEEEngine`, yaitu lapisan dasar untuk berinteraksi dengan Google Earth Engine.
+
+### Fungsi Utama
+
+Fungsi utama modul meliputi:
+
+* inisialisasi Google Earth Engine;
+* autentikasi;
+* pembentukan ROI berbasis HydroSHEDS;
+* pengolahan geometri;
+* operasi reduksi Earth Engine;
+* pengelolaan hasil spasial;
+* pembuatan laporan metrik tertentu.
+
+### Peran dalam Sistem
+
+`GEEEngine` digunakan sebagai komponen infrastruktur yang dipanggil oleh pipeline dan service.
+
+Secara konseptual:
+
+```text
+GEEEngine
+    │
+    ├── Authentication
+    ├── HydroSHEDS
+    ├── ROI
+    ├── Earth Engine operations
+    └── Metric / spatial utilities
+```
+
+### Hydro ROI
+
+Salah satu fungsi penting engine adalah memperoleh wilayah analisis berbasis informasi hidrologi.
+
+ROI tersebut menjadi referensi spasial bagi pipeline utama.
+
+## Modul `vegetation.py`
+
+Lokasi:
+
+```text
+src/core/vegetation.py
+```
+
+Modul ini menyediakan `VegetationAnalyzer` untuk analisis data penginderaan jauh.
+
+### Sumber Data
+
+Komponen mendukung data dari:
+
+* Sentinel-2;
+* Landsat;
+* Sentinel-1.
+
+### Fungsi Analisis
+
+Fungsi analisis meliputi:
+
+* penyaringan citra;
+* pemrosesan citra;
+* pembentukan komposit;
+* NDVI;
+* NDMI.
+
+### NDVI
+
+NDVI digunakan untuk merepresentasikan kondisi kehijauan vegetasi.
+
+Secara umum:
+
+$$
+NDVI = \frac{NIR - Red}{NIR + Red}
+$$
+
+Nilai NDVI kemudian dapat dibandingkan antarperiode untuk mengidentifikasi perubahan kondisi vegetasi.
+
+### NDMI
+
+NDMI digunakan untuk memberikan informasi mengenai kondisi kelembapan vegetasi.
+
+Secara umum:
+
+$$
+NDMI = \frac{NIR - SWIR}{NIR + SWIR}
+$$
+
+Implementasi aktual indeks mengikuti band dan dataset yang digunakan dalam source code.
+
+## Modul `landcover.py`
+
+Lokasi:
+
+```text
+src/core/landcover.py
+```
+
+Modul ini menyediakan `LandCoverAnalyzer`.
+
+### Sumber Data
+
+Modul menggunakan dua sumber klasifikasi utama:
+
+```text
+ESA/WorldCover/v100/2020
+GOOGLE/DYNAMICWORLD/V1
+```
+
+### WorldCover
+
+Fungsi `get_worldcover_2020()` mengambil layer WorldCover 2020 dan membatasi data terhadap ROI.
+
+Pada implementasi:
+
+```text
+WorldCover class 10 → forest
+```
+
+### Dynamic World
+
+Fungsi `get_dynamic_world()` membuat komposit temporal berdasarkan mode kelas `label`.
+
+Pada implementasi:
+
+```text
+Dynamic World class 1 → forest
+```
+
+### Forest Mask
+
+Fungsi:
+
+```text
+get_forest_mask()
+```
+
+menghasilkan raster biner:
+
+```text
+1 = forest
+0 = non-forest
+```
+
+Implementasi menangani perbedaan kode kelas antara WorldCover dan Dynamic World.
+
+### Non-Forest Mask
+
+Fungsi:
+
+```text
+get_nonforest_mask()
+```
+
+menghasilkan komplemen dari forest mask.
+
+### Forest Loss
+
+Fungsi:
+
+```text
+get_forest_loss_mask()
+```
+
+mengidentifikasi piksel yang:
+
+```text
+forest_before = 1
+forest_after  = 0
+```
+
+Secara konseptual:
+
+```text
+Forest before
+      │
+      ▼
+Forest mask
+      │
+      ├───────────────┐
+      │               │
+      ▼               ▼
+Forest after      Non-forest after
+      │               │
+      └───────┬───────┘
+              ▼
+         Forest loss
+```
+
+### Luas Area
+
+Fungsi:
+
+```text
+area_image()
+```
+
+mengubah mask menjadi estimasi luas berdasarkan `ee.Image.pixelArea()` dan mengonversinya dari meter persegi menjadi hektare.
+
+Konversinya:
+
+$$
+Area_{ha} = \frac{Area_{m^2}}{10,000}
+$$
+
+## Modul `hydrology.py`
+
+Lokasi:
+
+```text
+src/core/hydrology.py
+```
+
+Modul ini menyediakan komponen analisis hidrologi.
+
+### Curve Number
+
+Curve Number (CN) digunakan sebagai parameter yang merepresentasikan respons limpasan berdasarkan kondisi permukaan.
+
+Nilai CN digunakan dalam pendekatan SCS-CN.
+
+### Estimasi Limpasan SCS-CN
+
+Model Soil Conservation Service–Curve Number (SCS-CN) digunakan untuk mengestimasi kedalaman limpasan langsung (*direct runoff*) dari suatu kejadian curah hujan.
+
+Hubungan dasar metode dinyatakan sebagai:
+
+$$
+Q =
+\begin{cases}
+\dfrac{(P-I_a)^2}{P-I_a+S}, & P>I_a \\[6pt]
+0, & P\leq I_a
+\end{cases}
+$$
+
+dengan:
+
+* $Q$ = kedalaman limpasan langsung (mm);
+* $P$ = kedalaman curah hujan (mm);
+* $I_a$ = *initial abstraction* (mm);
+* $S$ = *potential maximum retention* (mm).
+
+Pada formulasi SCS-CN klasik, *initial abstraction* dihitung sebagai:
+
+$$
+I_a = 0.2S
+$$
+
+Nilai *potential maximum retention* ($S$) diturunkan dari *Curve Number* (CN) menggunakan:
+
+$$
+S = \frac{25400}{CN}-254
+$$
+
+dengan $CN$ merupakan *Curve Number* yang ditentukan berdasarkan karakteristik penggunaan/penutupan lahan, kelompok hidrologi tanah, dan kondisi hidrologis wilayah.
+
+Dengan demikian, nilai CN menjadi parameter utama yang mengontrol besarnya limpasan yang diestimasi oleh model. Nilai CN yang lebih tinggi menghasilkan nilai $S$ yang lebih rendah dan, untuk curah hujan yang sama, cenderung menghasilkan limpasan yang lebih besar.
+
+### CHIRPS
+
+Modul mengambil data curah hujan harian dari CHIRPS untuk digunakan sebagai input meteorologis.
+
+Salah satu fungsi analisis adalah memperoleh nilai curah hujan maksimum atau peak rainfall dalam periode yang dianalisis.
+
+### Keluaran
+
+Keluaran utama modul hidrologi berupa informasi yang dapat digunakan untuk:
+
+* Curve Number;
+* curah hujan;
+* runoff;
+* parameter hidrologi untuk pipeline P2.
+
+## Modul `terrain.py`
+
+Lokasi:
+
+```text
+src/core/terrain.py
+```
+
+Modul ini menangani informasi topografi.
+
+Parameter utama:
+
+```text
+Elevation
+Slope
+Aspect
+Hillshade
+```
+
+### Elevation
+
+DEM digunakan sebagai sumber elevasi untuk analisis medan.
+
+### Slope
+
+Slope digunakan untuk menggambarkan kemiringan permukaan dan menjadi salah satu parameter pada analisis P3 dan transek.
+
+### Aspect
+
+Aspect menunjukkan orientasi arah lereng.
+
+Parameter ini digunakan terutama pada analisis kandidat area dan cost surface.
+
+### Hillshade
+
+Hillshade digunakan untuk menghasilkan representasi visual kondisi topografi.
+
+## Modul `forensic_service.py`
+
+Lokasi:
+
+```text
+src/services/forensic_service.py
+```
+
+Komponen utama:
+
+```text
+ForensicAnalysisService
+```
+
+Service ini merupakan orchestrator utama workflow analisis.
+
+### Fungsi Utama
+
+Service menangani:
+
+1. inisialisasi analisis;
+2. pembentukan ROI;
+3. pemanggilan pipeline;
+4. pengelolaan hasil P1–P4;
+5. reduksi metrik;
+6. validasi hasil;
+7. penyediaan data untuk pelaporan.
+
+### Posisi dalam Arsitektur
+
+```text
+main.py
+   │
+   ▼
+ForensicAnalysisService
+   │
+   ├── GEEEngine
+   ├── P1
+   ├── P2
+   ├── P3
+   └── P4
+```
+
+Dengan pola tersebut, `main.py` berfungsi sebagai entry point sedangkan logika orkestrasi berada di dalam service.
+
+## Modul `export_service.py`
+
+Lokasi:
+
+```text
+src/services/export_service.py
+```
+
+Komponen utama:
+
+```text
+ExportAssetsService
+```
+
+Service ini digunakan untuk mengekspor hasil raster analisis.
+
+### Fungsi
+
+Service menangani:
+
+* pemilihan raster yang akan diekspor;
+* konfigurasi Earth Engine export task;
+* penggunaan skala ekspor;
+* ekspor ke Google Drive;
+* pengelolaan beberapa task ekspor.
+
+### Skala
+
+Workflow ekspor menggunakan skala yang berbeda sesuai jenis data.
+
+Pada utility `export_assets.py`:
+
+```text
+scale_s2 = 10
+scale_terrain = 30
+```
+
+Dengan demikian, data yang berasal dari resolusi Sentinel-2 dan data terrain dapat diekspor menggunakan resolusi yang sesuai dengan konfigurasi workflow.
+
+### Status P1
+
+Pada source snapshot yang didokumentasikan, ekspor raster P1 dinonaktifkan secara eksplisit.
+
+Hal tersebut merupakan konfigurasi implementasi versi `hki-v1.0.0`.
+
+## Modul `topography_service.py`
+
+Lokasi:
+
+```text
+src/services/topography_service.py
+```
+
+Komponen:
+
+```text
+TopographyService
+```
+
+Service ini menyediakan workflow pengolahan topografi yang lebih lengkap.
+
+### Fungsi
+
+Workflow dapat menghasilkan:
+
+* DEM;
+* slope;
+* hillshade;
+* contour.
+
+### Entry Point
+
+Service digunakan melalui:
+
+```text
+generate_countour.py
+```
+
+Pada implementasi tersebut, interval kontur yang diberikan adalah:
+
+```text
+10 meter
+```
+
+Direktori output dibuat berdasarkan timestamp eksekusi.
+
+## Modul `transect_service.py`
+
+Lokasi:
+
+```text
+src/services/transect_service.py
+```
+
+Komponen:
+
+```text
+TransectGenerator
+```
+
+Service ini digunakan untuk menghasilkan kandidat area dan transek.
+
+### Parameter
+
+Komponen mempertimbangkan:
+
+* elevasi;
+* slope;
+* aspect;
+* luas minimum;
+* panjang transek.
+
+### Cost Surface
+
+Workflow dapat menghasilkan cost surface berdasarkan kombinasi parameter:
+
+```text
+Elevation
+Slope
+Aspect
+```
+
+Pada utility `generate_track.py`, bobot yang diterapkan adalah:
+
+```text
+Elevation = 0.4
+Slope     = 0.4
+Aspect    = 0.2
+```
+
+### Least-Cost Path
+
+Konfigurasi utility mengaktifkan:
+
+```text
+least_cost = True
+```
+
+Sehingga jalur transek dapat ditentukan berdasarkan cost surface yang telah dibuat.
+
+## Hubungan Antar-Modul
+
+Hubungan modul dapat diringkas sebagai berikut:
+
+```text
+                 ┌───────────────┐
+                 │   GEEEngine   │
+                 └───────┬───────┘
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+        ▼                ▼                ▼
+ Vegetation         Land Cover        Hydrology
+        │                │                │
+        └────────┬───────┴────────┬───────┘
+                 │                │
+                 ▼                ▼
+              Pipelines       Terrain
+                 │                │
+                 └───────┬────────┘
+                         ▼
+              ForensicAnalysisService
+                         │
+             ┌───────────┼───────────┐
+             ▼           ▼           ▼
+           Export     Topography   Transect
+```
+
+Diagram tersebut menunjukkan hubungan fungsional, bukan urutan pemanggilan setiap fungsi secara literal.
+
+## Modul Pendukung R
+
+Lokasi:
+
+```text
+src/R/plot.R
+```
+
+Script R digunakan untuk kebutuhan visualisasi hasil.
+
+Komponen R tidak menjadi bagian dari workflow utama yang dipanggil melalui:
+
+```bash
+python main.py
+```
+
+Dengan demikian, script tersebut dikategorikan sebagai komponen pendukung visualisasi.
+
+## Prinsip Modularitas
+
+Pembagian modul memberikan pemisahan tanggung jawab (*separation of concerns*).
+
+Secara umum:
+
+```text
+engine.py
+    → infrastruktur Earth Engine
+
+vegetation.py
+    → analisis vegetasi
+
+landcover.py
+    → analisis tutupan lahan
+
+hydrology.py
+    → analisis hidrologi
+
+terrain.py
+    → analisis topografi
+
+p1–p4
+    → workflow analisis
+
+forensic_service.py
+    → orkestrasi
+
+export_service.py
+    → ekspor
+
+topography_service.py
+    → workflow topografi
+
+transect_service.py
+    → workflow transek
+```
+
+Pemisahan tersebut memungkinkan komponen analisis dikembangkan atau diuji secara relatif independen.
+
+## Ringkasan Modul
+
+| Modul                     | Lapisan       | Fungsi                          |
+| ------------------------- | ------------- | ------------------------------- |
+| `engine.py`                 | Core          | Earth Engine dan ROI            |
+| `vegetation.py`             | Core          | Vegetasi dan indeks spektral    |
+| `landcover.py`              | Core          | Tutupan lahan dan forest loss   |
+| `hydrology.py`              | Core          | Curah hujan, CN, dan runoff     |
+| `terrain.py`                | Core          | Elevasi dan parameter topografi |
+| `p1_gajah_satellite.py`     | Pipeline      | Analisis vegetasi multitemporal |
+| `p2_gajah_hydrology.py`     | Pipeline      | Analisis hidrologi              |
+| `p3_meureudu_upstream.py`   | Pipeline      | Forest loss dan topografi       |
+| `p4_causal_modeling.py`     | Pipeline      | Integrasi bukti spasial         |
+| `forensic_service.py`       | Service       | Orkestrasi dan validasi         |
+| `export_service.py`         | Service       | Ekspor raster                   |
+| `topography_service.py`     | Service       | Topografi dan kontur            |
+| `transect_service.py`       | Service       | Cost surface dan transek        |
+| `plot.R`                    | Visualization | Visualisasi hasil               |

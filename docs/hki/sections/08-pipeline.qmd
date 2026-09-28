@@ -1,0 +1,886 @@
+## Gambaran Umum Pipeline
+
+Program `Elephant Hydrometeorology` menggunakan empat pipeline analisis utama yang dieksekusi secara berurutan oleh `ForensicAnalysisService`:
+
+1. **P1 — Gajah Satellite Pipeline** untuk analisis perubahan vegetasi berbasis citra satelit.
+2. **P2 — Gajah Hydrology Pipeline** untuk simulasi limpasan permukaan menggunakan pendekatan SCS-CN.
+3. **P3 — Meureudu Upstream Pipeline** untuk mengidentifikasi kehilangan hutan pada area dengan kemiringan kritis.
+4. **P4 — Spatial Causal Pipeline** untuk mengintegrasikan bukti perubahan vegetasi dan respons hidrologis ke dalam matriks bukti spasial bertingkat.
+
+Urutan eksekusi utama adalah:
+
+```text
+HydroSHEDS ROI
+      │
+      ├── P1 Satellite
+      │      └── NDVI / NDMI
+      │
+      ├── P2 Hydrology
+      │      └── Rainfall / Runoff
+      │
+      ├── P3 Upstream
+      │      └── Forest Loss / Critical Slope
+      │
+      └── P4 Causal Integration
+             └── P1 + P2
+                    │
+                    ▼
+             Forensic Metrics
+```
+
+P1, P2, dan P3 menghasilkan `ee.Image` masing-masing. P4 menerima hasil P1 dan P2 sebagai input dan menghasilkan citra integrasi spasial.
+
+Secara konseptual, pipeline memisahkan tiga kelompok bukti:
+
+* perubahan kondisi vegetasi;
+* perubahan respons hidrologis;
+* perubahan tutupan hutan pada medan dengan kemiringan tertentu.
+
+P4 kemudian melakukan integrasi terhadap sebagian bukti tersebut untuk menghasilkan `causal_evidence_tier`.
+
+## P1 — Gajah Satellite Pipeline
+
+Implementasi P1 berada pada:
+
+```text
+src/pipelines/p1_gajah_satellite.py
+```
+
+Class utama:
+
+```python
+GajahSatellitePipeline
+```
+
+Pipeline menerima `roi` dan parameter `mode`. Jika `mode` tidak diberikan secara eksplisit, pipeline menggunakan `config.SATELLITE_MODE`, dengan default `sentinel2`.
+
+### Penyusunan periode analisis
+
+P1 mengambil tiga periode citra:
+
+```text
+Baseline
+    │
+    ├── F_BASELINE_START
+    └── F_BASELINE_END
+
+Pre-event
+    │
+    ├── F_PRE_EVENT_START
+    └── F_PRE_EVENT_END
+
+Post-event
+    │
+    ├── F_POST_EVENT_START
+    └── F_POST_EVENT_END
+```
+
+Ketiga periode tersebut digunakan untuk membentuk tiga komposit citra:
+
+```python
+img_baseline = col_baseline.median().clip(self.roi)
+img_pre_event = col_pre_event.median().clip(self.roi)
+img_post_event = col_post_event.median().clip(self.roi)
+```
+
+Pendekatan median digunakan untuk menghasilkan representasi temporal dari masing-masing periode sekaligus mengurangi pengaruh observasi ekstrem.
+
+Pipeline juga menghitung panjang interval observasi antara awal baseline dan akhir periode post-event:
+
+```python
+delta_days = (date_post_event_end - date_baseline_start).days
+calculated_timeline_years = delta_days / 365.25
+```
+
+Nilai tersebut kemudian disimpan sebagai metadata pada hasil P1.
+
+### Perhitungan indeks vegetasi
+
+Setiap komposit diproses oleh `VegetationAnalyzer`:
+
+```python
+idx_baseline = self.va.calculate_indices(img_baseline)
+idx_pre_event = self.va.calculate_indices(img_pre_event)
+idx_post_event = self.va.calculate_indices(img_post_event)
+```
+
+Indeks utama yang digunakan adalah:
+
+* NDVI;
+* NDMI.
+
+Band kemudian diberi nama berdasarkan periode:
+
+```text
+NDVI_baseline
+NDMI_baseline
+
+NDVI_preevent
+NDMI_preevent
+
+NDVI_postevent
+NDMI_postevent
+```
+
+Dengan demikian, perubahan temporal dapat dihitung langsung antarband.
+
+### Perubahan degradasi vegetasi
+
+Perubahan antara kondisi baseline dan pre-event dihitung sebagai:
+
+$$
+\Delta NDVI_{degradation}
+=
+NDVI_{pre-event}
+-
+NDVI_{baseline}
+$$
+
+Implementasinya:
+
+```python
+d_ndvi_degradation = (
+    bands_pre_event.select("NDVI_preevent")
+    .subtract(bands_baseline.select("NDVI_baseline"))
+    .rename("d_NDVI_degradation")
+)
+```
+
+Nilai negatif menunjukkan penurunan NDVI dibandingkan baseline.
+
+### Perubahan destruksi pasca-kejadian
+
+Perubahan antara kondisi post-event dan pre-event dihitung sebagai:
+
+$$
+\Delta NDVI_{destruction}
+=
+NDVI_{post-event}
+-
+NDVI_{pre-event}
+$$
+
+Implementasi:
+
+```python
+d_ndvi_destruction = (
+    bands_post_event.select("NDVI_postevent")
+    .subtract(bands_pre_event.select("NDVI_preevent"))
+    .rename("d_NDVI_destruction")
+)
+```
+
+Band ini digunakan P4 untuk membedakan perubahan vegetasi sebelum dan sesudah kejadian.
+
+### Threshold degradasi berbasis percentile
+
+P1 tidak menggunakan satu nilai threshold global yang ditentukan secara manual. Distribusi `d_NDVI_degradation` direduksi menggunakan percentile:
+
+```python
+percentiles = d_ndvi_degradation.reduceRegion(
+    reducer=ee.Reducer.percentile([5, 10, 25]),
+    geometry=self.roi,
+    scale=30 if self.mode == "sentinel2" else 20,
+    maxPixels=1e13,
+)
+```
+
+Tiga nilai yang dihasilkan adalah:
+
+```text
+p5
+p10
+p25
+```
+
+Mask degradasi utama menggunakan percentile ke-10:
+
+```python
+ndvi_degradation_mask = d_ndvi_degradation.lt(p10)
+```
+
+Dengan demikian, piksel yang termasuk bagian distribusi penurunan NDVI paling rendah ditandai sebagai area degradasi.
+
+P1 juga menghitung luas piksel yang memenuhi mask tersebut dalam hektar:
+
+```python
+ee.Image.pixelArea()
+    .multiply(0.0001)
+    .updateMask(ndvi_degradation_mask)
+```
+
+### Output P1
+
+Output P1 merupakan `ee.Image` multi-band yang mencakup:
+
+```text
+NDVI_baseline
+NDMI_baseline
+NDVI_preevent
+NDMI_preevent
+NDVI_postevent
+NDMI_postevent
+d_NDVI_degradation
+d_NDVI_destruction
+NDVI_Degradation_Mask
+ndvi_degradation_masif
+```
+
+Metadata tambahan:
+
+```text
+temporal_baseline_years
+ndvi_p5_threshold
+ndvi_p10_threshold
+ndvi_p25_threshold
+sensor_mode
+```
+
+## P2 — Gajah Hydrology Pipeline
+
+Implementasi P2 berada pada:
+
+```text
+src/pipelines/p2_gajah_hydrology.py
+```
+
+Class utama:
+
+```python
+GajahHydrologyPipeline
+```
+
+Pipeline menggabungkan:
+
+* ESA WorldCover 2020;
+* Dynamic World;
+* CHIRPS rainfall;
+* Curve Number;
+* simulasi runoff.
+
+### Land-cover baseline
+
+P2 mengambil WorldCover 2020:
+
+```python
+lc_2020_raw = self.lca.get_worldcover_2020()
+```
+
+Kemudian mengambil Dynamic World untuk periode pre-event:
+
+```python
+lc_2025_raw = self.lca.get_dynamic_world(
+    config.F_PRE_EVENT_START,
+    config.F_PRE_EVENT_END
+)
+```
+
+Kedua produk tersebut kemudian digunakan untuk membentuk mask hutan.
+
+### Curah hujan kejadian
+
+Curah hujan dinamis diambil melalui:
+
+```python
+self.hm.get_dynamic_peak_rainfall(
+    config.F_FLOOD_EVENT_START,
+    config.F_FLOOD_EVENT_END
+)
+```
+
+Band tersebut diberi nama:
+
+```text
+dynamic_rainfall_peak
+```
+
+Dengan demikian, curah hujan yang digunakan pada simulasi runoff berasal dari periode kejadian yang ditentukan dalam konfigurasi.
+
+### Forest loss sebelum kejadian
+
+P2 membentuk mask hutan dari dua kondisi:
+
+```python
+forest_2020 = self.lca.get_forest_mask(
+    lc_2020_raw,
+    source="worldcover"
+)
+
+forest_2025 = self.lca.get_forest_mask(
+    lc_2025_raw,
+    source="dynamic_world"
+)
+```
+
+Forest loss dihitung sebagai:
+
+```python
+loss_preevent = self.lca.get_forest_loss_mask(
+    forest_2020,
+    forest_2025
+)
+```
+
+Secara logika:
+
+$$
+ForestLoss =
+Forest_{2020}
+\land
+\neg Forest_{2025}
+$$
+
+Hasil ini kemudian digunakan untuk memodifikasi Curve Number.
+
+### Curve Number baseline
+
+Curve Number baseline dibuat dari WorldCover 2020:
+
+```python
+cn_baseline = self.hm.worldcover_to_cn(lc_2020_raw)
+```
+
+Kemudian skenario degradasi diterapkan menggunakan mask forest loss:
+
+```python
+cn_preevent = self.hm.apply_degradation_scenario(
+    cn_image=cn_baseline,
+    degradation_mask=loss_preevent,
+    degraded_cn=88
+)
+```
+
+Pada implementasi tag `hki-v1.0.0`, nilai Curve Number untuk area yang terdegradasi ditetapkan menjadi `88`.
+
+### Simulasi runoff
+
+Runoff baseline dihitung menggunakan Curve Number baseline:
+
+```python
+runoff_baseline = self.hm.calculate_runoff(
+    cn_baseline,
+    flood_rainfall_img
+)
+```
+
+Runoff skenario kejadian dihitung menggunakan Curve Number setelah degradasi:
+
+```python
+runoff_flood_event = self.hm.calculate_runoff(
+    cn_preevent,
+    flood_rainfall_img
+)
+```
+
+Perubahan runoff dihitung melalui:
+
+```python
+delta_runoff = self.hm.runoff_difference(
+    runoff_baseline,
+    runoff_flood_event
+)
+```
+
+Output utama:
+
+```text
+Q_simulated_baseline
+Q_actual_floodevent
+runoff_net_increase
+dynamic_rainfall_peak
+```
+
+## P3 — Meureudu Upstream Pipeline
+
+Implementasi P3 berada pada:
+
+```text
+src/pipelines/p3_meureudu_upstream.py
+```
+
+Class utama:
+
+```python
+MeureuduUpstreamPipeline
+```
+
+P3 mengintegrasikan data topografi dan tutupan lahan untuk mengidentifikasi kehilangan hutan pada area dengan slope lebih dari 15°.
+
+### Data topografi
+
+Slope diperoleh melalui:
+
+```python
+slope = self.ta.get_slope()
+```
+
+Data ini menjadi dasar untuk menentukan area kritis.
+
+### Forest cover baseline
+
+WorldCover 2020 dan Dynamic World pre-event digunakan kembali:
+
+```python
+lc_2020_raw = self.lca.get_worldcover_2020()
+
+lc_2025_raw = self.lca.get_dynamic_world(
+    config.F_PRE_EVENT_START,
+    config.F_PRE_EVENT_END
+)
+```
+
+Mask hutan dibentuk dari masing-masing produk.
+
+### Luas hutan 2020
+
+Area hutan baseline dikonversi dari luas piksel menjadi hektar:
+
+```python
+forest_cover_2020_ha = (
+    ee.Image.pixelArea()
+    .multiply(0.0001)
+    .updateMask(forest_2020)
+    .rename("forest_cover_2020")
+)
+```
+
+Konversi:
+
+$$
+ha = m^2 \times 0.0001
+$$
+
+### Kehilangan hutan pre-event
+
+Forest loss dihitung dengan logika:
+
+```text
+Forest 2020 = TRUE
+Forest 2025 = FALSE
+```
+
+Kemudian dikonversi menjadi luas hektar:
+
+```python
+loss_preevent_ha = (
+    ee.Image.pixelArea()
+    .multiply(0.0001)
+    .updateMask(loss_binary_mask)
+    .rename("forest_loss_preevent")
+)
+```
+
+### Identifikasi deforestasi pada slope kritis
+
+P3 kemudian membatasi forest loss pada area dengan slope lebih dari 15°:
+
+```python
+critical_clipping = loss_preevent_ha.updateMask(
+    slope.gt(15)
+).rename("critical_upstream_deforestation")
+```
+
+Output tersebut merepresentasikan area kehilangan hutan yang secara spasial berada pada kelas slope:
+
+$$
+Slope > 15^\circ
+$$
+
+### Output P3
+
+P3 menghasilkan tiga band:
+
+```text
+forest_cover_2020
+forest_loss_preevent
+critical_upstream_deforestation
+```
+
+P3 tidak menjadi input langsung P4. Hasilnya digunakan dalam proses reduction dan pelaporan metrik oleh `ForensicAnalysisService`.
+
+## P4 — Spatial Causal Pipeline
+
+Implementasi P4 berada pada:
+
+```text
+src/pipelines/p4_causal_modeling.py
+```
+
+Class utama:
+
+```python
+SpatialCausalPipeline
+```
+
+P4 menerima:
+
+```python
+satellite_img
+hydrology_img
+roi
+```
+
+Dengan demikian, P4 mengintegrasikan output P1 dan P2.
+
+### Komponen vegetasi
+
+P4 mengambil dua band utama dari P1:
+
+```text
+d_NDVI_degradation
+d_NDVI_destruction
+```
+
+Kemudian menghitung:
+
+```python
+ndvi_net_loss = d_degradation.add(
+    d_destruction
+)
+```
+
+dan:
+
+```python
+disturbance_shift = d_degradation.subtract(
+    d_destruction
+)
+```
+
+Keduanya disimpan sebagai:
+
+```text
+ndvi_net_loss
+disturbance_shift
+```
+
+### Mask perubahan signifikan
+
+P4 menggunakan threshold `-0.1` untuk mengidentifikasi perubahan NDVI yang signifikan:
+
+```python
+degradation_loss = d_degradation.lt(-0.1)
+destruction_loss = d_destruction.lt(-0.1)
+```
+
+Kedua mask tersebut kemudian digabungkan:
+
+```python
+significant_change_mask = degradation_loss.Or(
+    destruction_loss
+)
+```
+
+Selain itu, P4 membuat mask `compound_hotspot` untuk area yang mengalami penurunan pada kedua fase:
+
+```python
+compound_hotspot = (
+    d_degradation.lt(0)
+    .And(d_destruction.lt(0))
+)
+```
+
+### Integrasi bukti hidrologis
+
+Band `runoff_net_increase` dari P2 di-resample dan direproject sebelum digunakan bersama data P1:
+
+```python
+runoff_increase = (
+    self.hydrology
+    .select("runoff_net_increase")
+    .resample("bilinear")
+    .reproject(
+        crs="EPSG:32646",
+        scale=10
+    )
+)
+```
+
+Parameter implementasi pada versi ini adalah:
+
+```text
+CRS    : EPSG:32646
+Scale  : 10 m
+Method : bilinear
+```
+
+Kode juga secara eksplisit memberikan catatan bahwa EPSG:32646 perlu disesuaikan apabila ROI berada di zona UTM yang berbeda.
+
+### Threshold runoff dinamis
+
+P4 tidak menggunakan threshold runoff absolut yang ditentukan secara manual. Sebaliknya, percentile ke-75 dihitung dari distribusi kenaikan runoff:
+
+```python
+runoff_stats = runoff_increase.reduceRegion(
+    reducer=ee.Reducer.percentile([75]),
+    geometry=self.roi,
+    scale=30,
+    maxPixels=1e13,
+)
+```
+
+Nilainya disimpan sebagai:
+
+```text
+runoff_p75
+```
+
+Kemudian piksel dengan runoff increase di atas percentile tersebut ditandai:
+
+```python
+significant_runoff_spike = runoff_increase.gt(
+    runoff_p75
+)
+```
+
+### Causal evidence tier
+
+P4 membentuk nilai bertingkat `0–4`:
+
+| Tier | Kondisi implementasi                            | Interpretasi dalam kode                                        |
+| ---- | ----------------------------------------------- | -------------------------------------------------------------- |
+| 0    | Tidak memenuhi kondisi tier                     | Tidak ada kondisi bukti yang ditandai                          |
+| 1    | `degradation_loss`                                | Degradasi vegetasi                                             |
+| 2    | `destruction_loss`                                | Destruksi vegetasi pasca-kejadian                              |
+| 3    | `compound_hotspot`                                | Degradasi dan destruksi terjadi bersama                        |
+| 4    | `compound_hotspot AND significant_runoff_spike`   | Hotspot gabungan yang juga memiliki kenaikan runoff signifikan |
+
+Implementasi dilakukan dengan:
+
+```python
+causal_tier = (
+    ee.Image(0)
+    .where(degradation_loss, 1)
+    .where(destruction_loss, 2)
+    .where(compound_hotspot, 3)
+    .where(
+        compound_hotspot.And(significant_runoff_spike),
+        4
+    )
+    .rename("causal_evidence_tier")
+)
+```
+
+Selain tier, P4 menghasilkan flag:
+
+```text
+hydro_confirmed_hotspot
+```
+
+yang dibentuk dari:
+
+```python
+compound_hotspot.And(significant_runoff_spike)
+```
+
+### Output P4
+
+Output P4 terdiri atas:
+
+```text
+d_NDVI_degradation
+d_NDVI_destruction
+ndvi_net_loss
+disturbance_shift
+significant_change_mask
+compound_hotspot
+runoff_increase_resampled
+causal_evidence_tier
+hydro_confirmed_hotspot
+```
+
+## Hubungan Antar-Pipeline
+
+Ketergantungan utama pipeline dapat diringkas sebagai berikut:
+
+```text
+                  ┌──────────────────────┐
+                  │     HydroSHEDS ROI   │
+                  └──────────┬───────────┘
+                             │
+            ┌────────────────┼────────────────┐
+            │                │                │
+            ▼                ▼                ▼
+     ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+     │     P1      │  │     P2      │  │     P3      │
+     │  Satellite  │  │  Hydrology  │  │  Upstream   │
+     └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+            │                │                │
+            │                │                │
+            └───────┬────────┘                │
+                    ▼                         │
+             ┌─────────────┐                  │
+             │     P4      │                  │
+             │   Causal    │                  │
+             └──────┬──────┘                  │
+                    │                         │
+                    └────────────┬────────────┘
+                                 ▼
+                       ┌────────────────────┐
+                       │ Geospatial         │
+                       │ Reduction          │
+                       └─────────┬──────────┘
+                                 ▼
+                       ┌────────────────────┐
+                       │ Validated Metrics  │
+                       │ + JSON Report      │
+                       └────────────────────┘
+```
+
+P1 dan P2 memiliki hubungan langsung dengan P4. P3 berjalan sebagai pipeline terpisah tetapi hasilnya tetap dimasukkan ke dalam `master_forensic_image` pada tahap reduction.
+
+Dengan demikian, P3 berkontribusi terhadap metrik akhir tetapi bukan terhadap pembentukan `causal_evidence_tier`.
+
+## Integrasi pada ForensicAnalysisService
+
+Seluruh pipeline utama dipanggil oleh:
+
+```python
+ForensicAnalysisService.run_analysis_pipelines()
+```
+
+Urutan aktual:
+
+```python
+p1 = GajahSatellitePipeline(self.roi).execute()
+p2 = GajahHydrologyPipeline(self.roi).execute()
+p3 = MeureuduUpstreamPipeline(self.roi).execute()
+p4 = SpatialCausalPipeline(p1, p2, self.roi).execute()
+```
+
+Hasil dikembalikan sebagai tuple:
+
+```python
+(p1, p2, p3, p4)
+```
+
+Tahap berikutnya menggabungkan seluruh hasil dengan DEM dan slope:
+
+```python
+master_forensic_image = ee.Image.cat([
+    dem,
+    slope,
+    p1,
+    p2,
+    p3,
+    p4
+])
+```
+
+Seluruh band tersebut kemudian direduksi secara server-side menggunakan kombinasi reducer:
+
+```text
+mean
+median
+max
+sum
+```
+
+Dengan pendekatan ini, statistik untuk berbagai band dapat diperoleh dalam satu operasi `reduceRegion()`.
+
+## Output Pipeline
+
+Secara umum, output pipeline terbagi menjadi tiga bentuk.
+
+### Raster / `ee.Image`
+
+Output utama P1–P4 tetap berada dalam bentuk `ee.Image` selama proses analisis.
+
+Contoh:
+
+```text
+NDVI
+NDMI
+forest loss
+runoff
+slope
+causal evidence tier
+```
+
+### Statistik hasil reduction
+
+`ForensicAnalysisService` menghasilkan dictionary statistik yang berisi kombinasi nama band dan reducer, misalnya:
+
+```text
+elevation_mean
+elevation_median
+Slope_mean
+Slope_max
+NDVI_preevent_mean
+d_NDVI_degradation_mean
+runoff_net_increase_mean
+```
+
+Selain statistik band, service juga menambahkan:
+
+```text
+roi_total_area_m2
+timeline_years
+```
+
+### JSON metrics payload
+
+Metrik yang telah diproses dan divalidasi disimpan dalam struktur JSON yang dikelompokkan menjadi:
+
+```text
+metadata
+watershed_physiography
+pre_event_land_degradation
+pre_event_environmental_baseline
+post_event_vegetation_response
+hydrological_forensics
+forensic_attribution
+```
+
+Nama file dibentuk secara dinamis menggunakan timestamp:
+
+```text
+tangse_meureudu_metrics_YYYYMMDD_HHMMSS.json
+```
+
+dan disimpan pada:
+
+```text
+data/output_metrics/
+```
+
+## Parameter Implementasi Penting
+
+Parameter utama yang secara langsung memengaruhi hasil pipeline antara lain:
+
+| Komponen  | Parameter               | Implementasi                              |
+| --------- | ----------------------- | ----------------------------------------- |
+| P1        | Sensor                  | `config.SATELLITE_MODE`                     |
+| P1        | Baseline                | `F_BASELINE_START` – `F_BASELINE_END`         |
+| P1        | Pre-event               | `F_PRE_EVENT_START` – `F_PRE_EVENT_END`       |
+| P1        | Post-event              | `F_POST_EVENT_START` – `F_POST_EVENT_END`     |
+| P1        | Degradation threshold   | Percentile 10                             |
+| P1        | Percentile tambahan     | 5 dan 25                                  |
+| P2        | Land-cover baseline     | ESA WorldCover 2020                       |
+| P2        | Land-cover pre-event    | Dynamic World                             |
+| P2        | Rainfall                | CHIRPS periode kejadian                   |
+| P2        | Degraded CN             | 88                                        |
+| P3        | Critical slope          | `> 15°`                                     |
+| P4        | Significant NDVI change | `< -0.1`                                    |
+| P4        | Significant runoff      | Percentile 75                             |
+| P4        | Resampling              | Bilinear                                  |
+| P4        | Target scale            | 10 m                                      |
+| P4        | Target CRS              | EPSG:32646                                |
+| Reduction | Scale                   | 30 m                                      |
+| Reduction | Reducer                 | Mean, median, max, sum                    |
+
+## Catatan Implementasi
+
+Beberapa karakteristik implementasi perlu dicatat sebagai bagian dari dokumentasi versi `hki-v1.0.0`.
+
+Pertama, P1 memiliki mekanisme pengecekan koleksi Sentinel-2. Apabila mode yang digunakan adalah Sentinel-2 dan koleksi pre-event kosong, pipeline menghentikan eksekusi dengan `RuntimeError` dan memberikan instruksi untuk menggunakan Sentinel-1.
+
+Kedua, P4 melakukan reprojection eksplisit ke `EPSG:32646`. Nilai ini merupakan parameter yang tertanam dalam implementasi versi yang didokumentasikan dan bukan mekanisme otomatis pemilihan zona UTM.
+
+Ketiga, P4 menggunakan percentile ke-75 sebagai threshold dinamis untuk kenaikan runoff. Threshold tersebut dihitung dari distribusi `runoff_net_increase` pada ROI.
+
+Keempat, `causal_evidence_tier` merupakan klasifikasi spasial berbasis aturan yang menggabungkan perubahan NDVI dan kenaikan runoff. Output tersebut harus dipahami sebagai hasil integrasi bukti yang diimplementasikan dalam program, bukan sebagai pengukuran langsung hubungan sebab-akibat.
+
+Kelima, P3 tidak digunakan sebagai input langsung P4. P3 tetap menjadi bagian dari hasil analisis keseluruhan karena dimasukkan ke dalam citra master pada tahap `execute_geospatial_reduction()`.
+
+Dengan struktur tersebut, pipeline utama program dapat dipandang sebagai kombinasi antara analisis penginderaan jauh, pemodelan hidrologi berbasis Curve Number, analisis medan, dan integrasi bukti spasial.

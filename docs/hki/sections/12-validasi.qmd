@@ -1,0 +1,615 @@
+## Tujuan Validasi
+
+Validasi dilakukan untuk memastikan bahwa program pada tag `hki-v1.0.0`:
+
+1. dapat diinisialisasi pada environment yang sesuai;
+2. dapat terhubung dengan Google Earth Engine;
+3. dapat membentuk wilayah studi;
+4. dapat menjalankan pipeline P1 sampai P4;
+5. dapat melakukan reduksi statistik;
+6. dapat menghasilkan keluaran yang diharapkan;
+7. dapat menyimpan hasil analisis ke direktori output;
+8. dapat menghasilkan data spasial yang dapat diperiksa menggunakan perangkat lunak GIS.
+
+Validasi dalam dokumentasi ini dibedakan antara validasi teknis eksekusi program dan validasi terhadap interpretasi ilmiah hasil analisis.
+
+Program yang berhasil dieksekusi tidak secara otomatis membuktikan bahwa setiap hubungan kausal yang dihasilkan oleh model merupakan hubungan kausal empiris. Validasi teknis memastikan fungsi perangkat lunak berjalan sesuai implementasi sumber.
+
+## Objek Validasi
+
+Objek validasi program mencakup komponen berikut:
+
+```text
+Environment
+    │
+    ├── Python
+    ├── dependency
+    └── Earth Engine API
+          │
+          ▼
+GEEEngine
+    │
+    ├── authentication
+    ├── project initialization
+    └── ROI generation
+          │
+          ▼
+Analysis Pipelines
+    │
+    ├── P1 Satellite
+    ├── P2 Hydrology
+    ├── P3 Upstream
+    └── P4 Spatial Causal
+          │
+          ▼
+Reduction
+    │
+    ├── mean
+    ├── median
+    ├── max
+    └── sum
+          │
+          ▼
+Output
+    │
+    ├── JSON
+    ├── GeoJSON
+    ├── CSV
+    └── raster/vector export
+```
+
+## Validasi Environment
+
+Tahap pertama adalah memastikan environment repository dapat digunakan.
+
+Environment yang ditetapkan pada `environment.yml` adalah:
+
+```text
+geo-forensic-env
+```
+
+dengan Python:
+
+```text
+3.11
+```
+
+Pemeriksaan dilakukan menggunakan:
+
+```bash
+python --version
+```
+
+Dependency utama dapat diperiksa menggunakan import test:
+
+```bash
+python -c "import ee, geemap, pandas, numpy, geopandas, rasterio, shapely"
+```
+
+Jika perintah tersebut selesai tanpa exception, dependency utama tersedia pada environment aktif.
+
+## Validasi Google Earth Engine
+
+Google Earth Engine merupakan dependency eksternal utama sehingga konektivitasnya harus divalidasi sebelum pipeline dijalankan.
+
+Autentikasi dilakukan melalui:
+
+```bash
+earthengine authenticate
+```
+
+Program kemudian menginisialisasi Earth Engine menggunakan:
+
+```python
+ee.Initialize(project=config.PROJECT_ID)
+```
+
+Keberhasilan tahap ini dapat diamati melalui pesan runtime yang dihasilkan oleh `GEEEngine`:
+
+```text
+[✓] GEE Terhubung Menggunakan Project ID: ...
+```
+
+Apabila proses inisialisasi gagal, program tidak melanjutkan pipeline dan menghasilkan `RuntimeError`.
+
+Mekanisme tersebut berfungsi sebagai guardrail pada tahap awal eksekusi.
+
+## Validasi ROI
+
+Setelah Earth Engine berhasil diinisialisasi, `GEEEngine` membentuk wilayah studi berdasarkan outlet yang terdapat dalam konfigurasi.
+
+Dataset yang digunakan adalah:
+
+```text
+WWF/HydroSHEDS/v1/Basins/hybas_12
+```
+
+Validasi ROI dilakukan dengan memastikan bahwa:
+
+1. objek ROI berhasil dibuat;
+2. ROI memiliki geometri;
+3. ROI dapat digunakan oleh pipeline;
+4. ROI dapat diekspor ke GeoJSON.
+
+Ekspor dilakukan menggunakan:
+
+```python
+roi.getInfo()
+```
+
+dan menghasilkan file pada:
+
+```text
+data/output_metrics/tangse_meureudu_roi.geojson
+```
+
+GeoJSON tersebut merupakan bukti bahwa geometri wilayah studi berhasil ditransfer dari Earth Engine ke lingkungan lokal.
+
+## Validasi Pipeline P1
+
+Pipeline P1 divalidasi dengan memastikan bahwa objek `GajahSatellitePipeline` dapat menghasilkan `ee.Image`.
+
+Tahapan yang diperiksa meliputi:
+
+```text
+Input ROI
+    ↓
+Satellite collection
+    ↓
+Baseline image
+    ↓
+Pre-event image
+    ↓
+Post-event image
+    ↓
+NDVI / NDMI
+    ↓
+ΔNDVI
+    ↓
+Percentile threshold
+    ↓
+Degradation mask
+    ↓
+Output image
+```
+
+Output utama yang diperiksa adalah keberadaan band:
+
+```text
+NDVI_baseline
+NDVI_preevent
+NDVI_postevent
+NDMI_baseline
+NDMI_preevent
+NDMI_postevent
+d_NDVI_degradation
+d_NDVI_destruction
+NDVI_Degradation_Mask
+ndvi_degradation_masif
+```
+
+Pipeline juga menghitung percentile:
+
+```text
+P5
+P10
+P25
+```
+
+dan menyimpan nilai tersebut sebagai metadata pada output image.
+
+## Validasi Pipeline P2
+
+Pipeline P2 divalidasi berdasarkan keberhasilan pembentukan output hidrologi.
+
+Urutan validasinya adalah:
+
+```text
+WorldCover 2020
+       +
+Dynamic World
+       ↓
+Forest mask
+       ↓
+Forest loss
+       ↓
+Curve Number
+       ↓
+Degraded Curve Number
+       ↓
+CHIRPS peak rainfall
+       ↓
+Runoff baseline
+       ↓
+Runoff flood event
+       ↓
+Runoff difference
+```
+
+Band utama yang diperiksa:
+
+```text
+dynamic_rainfall_peak
+Q_simulated_baseline
+Q_actual_floodevent
+runoff_net_increase
+```
+
+Keberadaan `runoff_net_increase` menjadi salah satu input utama P4 sehingga kegagalan pada P2 dapat diketahui pada tahap integrasi berikutnya.
+
+## Validasi Pipeline P3
+
+P3 menghasilkan indikator perubahan tutupan hutan pada wilayah dengan kondisi topografi tertentu.
+
+Validasi dilakukan terhadap tiga output utama:
+
+```text
+forest_cover_2020
+forest_loss_preevent
+critical_upstream_deforestation
+```
+
+Mask kritis dibuat berdasarkan:
+
+```python
+slope.gt(15)
+```
+
+Dengan demikian, validasi P3 harus memastikan bahwa band `critical_upstream_deforestation` hanya dibentuk berdasarkan kondisi slope yang lebih besar dari 15 derajat dalam implementasi yang didokumentasikan.
+
+## Validasi Pipeline P4
+
+P4 merupakan tahap integrasi spasial antara hasil vegetasi P1 dan hidrologi P2.
+
+Input utama:
+
+```text
+P1
+├── d_NDVI_degradation
+└── d_NDVI_destruction
+
+P2
+└── runoff_net_increase
+```
+
+Pipeline menghitung:
+
+```text
+ndvi_net_loss
+disturbance_shift
+significant_change_mask
+compound_hotspot
+runoff_increase_resampled
+causal_evidence_tier
+hydro_confirmed_hotspot
+```
+
+Validasi teknis dilakukan dengan memastikan seluruh band tersebut dapat dibentuk tanpa error Earth Engine.
+
+## Validasi Reprojection
+
+Pada P4, data runoff diproses melalui resampling dan reprojection:
+
+```python
+.resample("bilinear")
+.reproject(
+    crs="EPSG:32646",
+    scale=10
+)
+```
+
+Implementasi ini merupakan bagian eksplisit dari source code pada tag `hki-v1.0.0`.
+
+Validasi pada tahap ini terutama memastikan bahwa operasi Earth Engine dapat dijalankan dengan CRS dan skala yang ditentukan.
+
+Penggunaan CRS tersebut merupakan keputusan implementasi program dan harus dipertahankan sebagai bagian dari dokumentasi versi. Perubahan CRS pada versi berikutnya perlu dicatat sebagai perubahan teknis karena dapat memengaruhi hasil spasial.
+
+## Validasi Reduksi Statistik
+
+Setelah seluruh pipeline selesai, program menggabungkan hasil analisis dengan DEM dan slope menjadi satu image:
+
+```python
+master_forensic_image = ee.Image.cat(
+    [dem, slope, p1, p2, p3, p4]
+)
+```
+
+Program kemudian menerapkan kombinasi reducer:
+
+```text
+mean
+median
+max
+sum
+```
+
+dengan:
+
+```text
+scale = 30
+maxPixels = 1e13
+```
+
+Keberhasilan tahap ini menunjukkan bahwa output pipeline dapat direduksi menjadi statistik regional yang dapat diambil dari Earth Engine.
+
+## Validasi Metrik
+
+Metrik yang diperoleh dari `reduceRegion()` dikembalikan ke Python menggunakan:
+
+```python
+.getInfo()
+```
+
+Payload hasil kemudian dapat diperiksa berdasarkan keberadaan field yang diperlukan.
+
+Program menyediakan fungsi `safe_extract_metric()` untuk mengambil nilai berdasarkan nama key yang sesuai.
+
+Implementasi menggunakan:
+
+```python
+if k == key or k.endswith("_" + key):
+    return v
+```
+
+Pola pencocokan tersebut menghindari pencarian substring bebas yang berpotensi menghasilkan false-positive.
+
+## Validasi Output JSON
+
+Output metrik JSON merupakan salah satu bukti hasil eksekusi program.
+
+Setelah program selesai, file JSON dapat diperiksa menggunakan:
+
+```bash
+python -m json.tool data/output_metrics/<nama_file>.json
+```
+
+Jika file merupakan JSON valid, command tersebut akan menampilkan struktur data tanpa menghasilkan parsing error.
+
+Validasi minimal mencakup:
+
+```text
+File tersedia
+        ↓
+JSON dapat diparsing
+        ↓
+Payload memiliki struktur dictionary
+        ↓
+Metrik tersedia
+        ↓
+Nilai dapat dibaca kembali
+```
+
+## Validasi GeoJSON
+
+ROI hasil delineasi Earth Engine diekspor sebagai GeoJSON.
+
+File:
+
+```text
+data/output_metrics/tangse_meureudu_roi.geojson
+```
+
+dapat diperiksa secara struktural maupun visual.
+
+Pemeriksaan struktural dapat dilakukan menggunakan Python:
+
+```bash
+python -c "import json; json.load(open('data/output_metrics/tangse_meureudu_roi.geojson')); print('Valid GeoJSON JSON structure')"
+```
+
+Pemeriksaan visual dapat dilakukan dengan membuka file tersebut pada QGIS.
+
+Validasi visual penting untuk memastikan geometri yang diekspor dapat dibaca sebagai layer spasial dan berada pada lokasi studi yang diharapkan.
+
+## Validasi CSV Tier
+
+Script `count_tier_area.py` menghasilkan:
+
+```text
+data/output_metrics/tier_area.csv
+```
+
+CSV memiliki struktur:
+
+```text
+tier
+kategori
+luas_ha
+persen
+```
+
+Validasi dilakukan dengan memastikan:
+
+1. file berhasil dibuat;
+2. header tersedia;
+3. nilai tier dapat dibaca sebagai kategori;
+4. luas tersedia dalam hektar;
+5. persentase dapat dihitung dari total luas.
+
+`GEEEngine.tier_report()` mengurutkan kelompok berdasarkan nilai tier sebelum menulis CSV.
+
+## Validasi Output Raster
+
+Workflow `export_assets.py` menyediakan mekanisme ekspor raster ke Google Drive melalui `ExportAssetsService`.
+
+Validasi workflow ini dilakukan dengan memeriksa status task ekspor setelah program dijalankan.
+
+Script melakukan polling terhadap task aktif dan memberikan status keberhasilan atau kegagalan.
+
+Validasi raster dapat dilanjutkan dengan membuka hasil ekspor pada perangkat lunak GIS, seperti QGIS, dan memeriksa:
+
+```text
+Raster dapat dibuka
+       ↓
+Band tersedia
+       ↓
+Extent sesuai wilayah studi
+       ↓
+Resolusi sesuai parameter ekspor
+       ↓
+Nilai raster dapat divisualisasikan
+```
+
+## Validasi Topografi
+
+Workflow `generate_countour.py` menghasilkan keluaran melalui `TopographyService`.
+
+Validasi dilakukan dengan memastikan direktori output timestamp berhasil dibuat dan hasil topografi dapat dibaca oleh perangkat lunak GIS.
+
+Parameter interval kontur pada source code adalah:
+
+```text
+10
+```
+
+Sehingga hasil workflow dapat diperiksa untuk memastikan kontur dibuat berdasarkan interval yang ditentukan.
+
+## Validasi Workflow Transek
+
+`generate_track.py` merupakan workflow pendukung untuk analisis kandidat area dan transek.
+
+Salah satu keluaran yang dihasilkan adalah:
+
+```text
+data/output_rasters/cost_surface.tif
+```
+
+Validasi dilakukan dengan memeriksa apakah cost surface berhasil dibuat dan apakah output vektor transek dapat dibuka menggunakan perangkat lunak GIS.
+
+Karena workflow ini tidak dipanggil oleh `main.py`, validasi workflow transek dilakukan secara terpisah dari validasi pipeline utama P1–P4.
+
+## Bukti Eksekusi
+
+Bukti eksekusi program untuk dokumentasi HKI dapat dikumpulkan dalam bentuk:
+
+```text
+1. Screenshot terminal
+2. Screenshot environment aktif
+3. Screenshot proses autentikasi / koneksi GEE
+4. Screenshot log P1–P4
+5. Screenshot hasil laporan metrik
+6. File JSON hasil analisis
+7. File GeoJSON ROI
+8. File CSV tier
+9. Screenshot hasil layer pada QGIS
+10. Screenshot struktur repository dan tag versi
+```
+
+Bukti tersebut dapat ditempatkan pada direktori dokumentasi:
+
+```text
+docs/hki/screenshots/
+```
+
+sedangkan gambar yang digunakan sebagai ilustrasi dalam dokumen dapat ditempatkan pada:
+
+```text
+docs/hki/figures/
+```
+
+## Contoh Bukti Terminal
+
+Contoh bentuk bukti eksekusi yang dapat dicantumkan dalam dokumentasi adalah:
+
+```text
+$ python main.py
+
+[✓] GEE Terhubung Menggunakan Project ID: ...
+[~] Running analysis pipelines...
+[~] Running Satellite Pipeline using MODE: SENTINEL2
+...
+```
+
+Log aktual sebaiknya diambil langsung dari eksekusi program dan disimpan sebagai screenshot atau teks hasil eksekusi.
+
+Dokumentasi tidak menggunakan angka atau hasil simulasi yang tidak berasal dari eksekusi aktual.
+
+## Validasi Integritas Source Code
+
+Source code yang menjadi objek dokumentasi dikunci pada tag:
+
+```text
+hki-v1.0.0
+```
+
+Tag tersebut menunjuk pada snapshot source tertentu sehingga isi program yang dijelaskan dalam dokumen dapat dikaitkan dengan versi repository tertentu.
+
+Validasi integritas source dilakukan dengan mencatat commit yang menjadi dasar tag:
+
+```text
+40fe8e299d86358ee0d43373e94b3fe8b044104f
+```
+
+Dengan demikian, dokumentasi tidak hanya mengacu pada branch yang dapat berubah, tetapi pada snapshot source yang dapat diidentifikasi melalui tag dan commit.
+
+## Batasan Validasi
+
+Validasi perangkat lunak tidak sama dengan validasi seluruh kesimpulan ilmiah.
+
+Validasi teknis dapat menunjukkan bahwa:
+
+* source code dapat dijalankan;
+* dependency tersedia;
+* koneksi Earth Engine berhasil;
+* pipeline menghasilkan objek output;
+* reducer menghasilkan statistik;
+* file output dapat dibuat;
+* output spasial dapat dibuka.
+
+Namun, validasi teknis tidak dengan sendirinya membuktikan bahwa:
+
+* hubungan sebab-akibat telah terbukti secara eksperimental;
+* seluruh perubahan tutupan lahan merupakan penyebab suatu kejadian;
+* model hidrologi merepresentasikan seluruh proses hidrologi aktual;
+* setiap hotspot yang dihasilkan merupakan lokasi kausal yang terkonfirmasi di lapangan.
+
+Interpretasi tersebut memerlukan validasi empiris tambahan, termasuk pemeriksaan data lapangan, kualitas input, ketidakpastian model, validasi independen, dan evaluasi metodologis.
+
+## Checklist Validasi
+
+Checklist berikut dapat digunakan sebelum dokumen finalisasi:
+
+| No. | Komponen     | Pemeriksaan                           | Status |
+| --: | ------------ | ------------------------------------- | ------ |
+|   1 | Environment  | `geo-forensic-env` tersedia             | ☐      |
+|   2 | Python       | Python 3.11 tersedia                  | ☐      |
+|   3 | Dependency   | Library utama dapat di-import         | ☐      |
+|   4 | Earth Engine | Authentication berhasil               | ☐      |
+|   5 | GEE project  | `PROJECT_ID` valid                      | ☐      |
+|   6 | ROI          | HydroSHEDS ROI berhasil dibuat        | ☐      |
+|   7 | P1           | Output image berhasil dibuat          | ☐      |
+|   8 | P2           | Output hidrologi berhasil dibuat      | ☐      |
+|   9 | P3           | Output upstream berhasil dibuat       | ☐      |
+|  10 | P4           | Integrasi spasial berhasil dibuat     | ☐      |
+|  11 | Reduction    | Statistik berhasil diperoleh          | ☐      |
+|  12 | JSON         | Payload dapat diparsing               | ☐      |
+|  13 | GeoJSON      | ROI dapat dibuka                      | ☐      |
+|  14 | CSV          | Tier report berhasil dibuat           | ☐      |
+|  15 | QGIS         | Output spasial dapat divisualisasikan | ☐      |
+|  16 | Source       | Tag `hki-v1.0.0` terverifikasi          | ☐      |
+|  17 | Commit       | SHA source tercatat                   | ☐      |
+|  18 | Bukti        | Screenshot/log eksekusi tersedia      | ☐      |
+
+## Kesimpulan Validasi
+
+Validasi program pada versi `hki-v1.0.0` dilakukan melalui pemeriksaan berlapis mulai dari environment, autentikasi Earth Engine, pembentukan ROI, eksekusi pipeline P1–P4, reduksi statistik, validasi metrik, hingga pemeriksaan file output.
+
+Bukti eksekusi sebaiknya menggabungkan bukti terminal dan bukti output spasial agar hubungan antara source code, proses eksekusi, dan keluaran program dapat ditelusuri secara jelas.
+
+Untuk keperluan dokumentasi HKI, bukti utama yang paling relevan adalah:
+
+```text
+Source tag
+    ↓
+Commit SHA
+    ↓
+Environment
+    ↓
+Successful execution
+    ↓
+Generated output
+    ↓
+Visual / structural verification
+```
+
+Rangkaian tersebut memberikan jejak teknis yang dapat digunakan untuk menghubungkan versi source code yang didokumentasikan dengan hasil eksekusi program.

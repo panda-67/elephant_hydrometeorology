@@ -1,0 +1,766 @@
+## Tujuan Lampiran
+
+Lampiran ini mendokumentasikan struktur source code program komputer yang menjadi objek dokumentasi. Source code yang dirujuk dalam dokumen ini adalah source code pada repository:
+
+`panda-67/elephant_hydrometeorology`
+
+Snapshot source code yang menjadi dasar dokumentasi ditetapkan pada:
+
+* **Tag:** `hki-v1.0.0`
+* **Commit:** `40fe8e299d86358ee0d43373e94b3fe8b044104f`
+* **Tanggal commit:** 17 September 2026, 14:56:29 WIB
+
+Dengan menggunakan tag dan commit tersebut sebagai referensi, isi source code yang dijelaskan dalam dokumen dapat ditelusuri kembali secara spesifik.
+
+Dokumentasi ini tidak menyalin seluruh source code ke dalam badan PDF. Source code lengkap tetap dipelihara pada repository GitHub, sedangkan lampiran ini memberikan inventaris source code, fungsi setiap kelompok modul, serta beberapa listing utama yang diperlukan untuk mengidentifikasi struktur program.
+
+## Struktur Source Code
+
+Pada snapshot `hki-v1.0.0`, struktur source code utama adalah sebagai berikut.
+
+```text
+elephant_hydrometeorology/
+│
+├── .gitignore
+├── README.md
+├── config.py
+├── count_tier_area.py
+├── environment.yml
+├── export_assets.py
+├── generate_countour.py
+├── generate_track.py
+├── main.py
+│
+└── src/
+    ├── __init__.py
+    │
+    ├── R/
+    │   └── plot.R
+    │
+    ├── core/
+    │   ├── __init__.py
+    │   ├── engine.py
+    │   ├── hydrology.py
+    │   ├── landcover.py
+    │   ├── terrain.py
+    │   └── vegetation.py
+    │
+    ├── pipelines/
+    │   ├── __init__.py
+    │   ├── p1_gajah_satellite.py
+    │   ├── p2_gajah_hydrology.py
+    │   ├── p3_meureudu_upstream.py
+    │   └── p4_causal_modeling.py
+    │
+    └── services/
+        ├── __init__.py
+        ├── export_service.py
+        ├── forensic_service.py
+        ├── topography_service.py
+        └── transect_service.py
+```
+
+File `.gitkeep` pada direktori `data/` digunakan untuk mempertahankan struktur direktori pada repository. Data hasil eksekusi tidak menjadi bagian dari snapshot source code tersebut.
+
+## Entry Point Program
+
+File `main.py` merupakan entry point utama program. File ini menginisialisasi Google Earth Engine, membangun ROI berbasis hidrologi, menjalankan pipeline analisis, melakukan reduksi geospasial, memvalidasi metrik, menampilkan laporan, dan menyimpan payload hasil.
+
+Struktur pemanggilan utama dapat diringkas sebagai berikut.
+
+```python
+def main():
+    # Inisialisasi Google Earth Engine
+    # dan service analisis
+    ...
+
+    # Menjalankan pipeline
+    pipelines = forensic_service.run_analysis_pipelines()
+
+    # Reduksi geospasial
+    raw_stats = forensic_service.execute_geospatial_reduction(
+        pipelines
+    )
+
+    # Validasi dan parsing metrik
+    metrics = forensic_service.parse_and_validate_metrics(
+        raw_stats
+    )
+
+    # Menampilkan laporan
+    forensic_service.display_report(metrics)
+
+    # Menyimpan hasil
+    forensic_service.save_metrics_payload(metrics)
+```
+
+Urutan analisis yang diimplementasikan adalah:
+
+```text
+GEE initialization
+       │
+       ▼
+HydroSHEDS ROI
+       │
+       ▼
+P1 Satellite
+       │
+       ▼
+P2 Hydrology
+       │
+       ▼
+P3 Upstream
+       │
+       ▼
+P4 Spatial Causal Modeling
+       │
+       ▼
+Geospatial Reduction
+       │
+       ▼
+Validation
+       │
+       ▼
+Report + JSON output
+```
+
+Entry point tersebut menjadi penghubung utama antara komponen `core`, `pipelines`, dan `services`.
+
+## Konfigurasi Program
+
+Konfigurasi analisis berada pada file:
+
+```text
+config.py
+```
+
+File ini menyediakan parameter yang digunakan oleh pipeline, termasuk:
+
+* Google Earth Engine project;
+* periode baseline;
+* periode pre-event;
+* periode post-event;
+* periode kejadian banjir;
+* mode citra satelit;
+* parameter analisis lainnya.
+
+Contoh penggunaan konfigurasi pada pipeline adalah:
+
+```python
+from config import config
+
+col_baseline = self.va.get_collection(
+    config.F_BASELINE_START,
+    config.F_BASELINE_END
+)
+
+col_pre_event = self.va.get_collection(
+    config.F_PRE_EVENT_START,
+    config.F_PRE_EVENT_END
+)
+
+col_post_event = self.va.get_collection(
+    config.F_POST_EVENT_START,
+    config.F_POST_EVENT_END
+)
+```
+
+Pemisahan konfigurasi dari kode analisis memungkinkan parameter temporal dan parameter proyek diubah tanpa melakukan modifikasi pada struktur utama pipeline.
+
+## Core Modules
+
+Komponen inti berada pada direktori:
+
+```text
+src/core/
+```
+
+### `engine.py`
+
+`engine.py` menyediakan fungsi dasar untuk interaksi dengan Google Earth Engine.
+
+Fungsi utamanya meliputi:
+
+* inisialisasi Earth Engine;
+* pembentukan ROI menggunakan HydroSHEDS;
+* ekspor ROI ke GeoJSON;
+* operasi reduksi geospasial;
+* pembuatan laporan luas berdasarkan `causal_evidence_tier`.
+
+Dataset HydroSHEDS yang digunakan untuk delineasi ROI adalah:
+
+```python
+ee.FeatureCollection(
+    "WWF/HydroSHEDS/v1/Basins/hybas_12"
+)
+```
+
+### `vegetation.py`
+
+`vegetation.py` menangani analisis vegetasi berbasis penginderaan jauh.
+
+Komponen ini mencakup:
+
+* Sentinel-2;
+* Landsat;
+* Sentinel-1;
+* cloud masking;
+* NDVI;
+* NDMI;
+* pengambilan koleksi citra berdasarkan periode analisis.
+
+Output utamanya digunakan oleh pipeline P1.
+
+### `landcover.py`
+
+`landcover.py` menangani klasifikasi tutupan lahan dan pembentukan forest mask.
+
+Dataset yang digunakan meliputi:
+
+```text
+ESA WorldCover 2020
+Google Dynamic World
+```
+
+Implementasi forest mask membedakan sumber dataset.
+
+```python
+if source == "worldcover":
+    return image.eq(10).rename("forest_mask")
+
+if source == "dynamic_world":
+    return image.eq(1).rename("forest_mask")
+```
+
+Forest loss kemudian ditentukan melalui perubahan dari forest menjadi non-forest:
+
+```python
+return (
+    forest_mask_before
+    .And(forest_mask_after.Not())
+    .rename("forest_loss_mask")
+)
+```
+
+### `hydrology.py`
+
+`hydrology.py` menyediakan komponen model hidrologi, termasuk:
+
+* konversi tutupan lahan menjadi Curve Number;
+* skenario degradasi;
+* pengambilan curah hujan CHIRPS;
+* perhitungan runoff;
+* perbedaan runoff baseline dan kondisi kejadian.
+
+Komponen ini digunakan terutama oleh pipeline P2.
+
+### `terrain.py`
+
+`terrain.py` menyediakan analisis topografi, termasuk:
+
+* DEM;
+* slope;
+* aspect;
+* hillshade.
+
+Informasi topografi digunakan oleh pipeline P3 serta proses reduksi dan analisis tambahan.
+
+## Pipeline Source Code
+
+Empat pipeline utama berada pada direktori:
+
+```text
+src/pipelines/
+```
+
+### Pipeline P1 — `p1_gajah_satellite.py`
+
+Class utama:
+
+```python
+class GajahSatellitePipeline:
+    ...
+```
+
+Pipeline menerima ROI dan mode sensor, kemudian:
+
+1. mengambil koleksi baseline;
+2. mengambil koleksi pre-event;
+3. mengambil koleksi post-event;
+4. membuat citra median;
+5. menghitung NDVI dan NDMI;
+6. menghitung perubahan NDVI;
+7. menghitung percentile perubahan;
+8. membentuk mask degradasi;
+9. menghitung luasan degradasi;
+10. menggabungkan seluruh band output.
+
+Output utama meliputi:
+
+```text
+NDVI_baseline
+NDMI_baseline
+NDVI_preevent
+NDMI_preevent
+NDVI_postevent
+NDMI_postevent
+d_NDVI_degradation
+d_NDVI_destruction
+NDVI_Degradation_Mask
+ndvi_degradation_masif
+```
+
+Pipeline juga menyimpan metadata:
+
+```text
+temporal_baseline_years
+ndvi_p5_threshold
+ndvi_p10_threshold
+ndvi_p25_threshold
+sensor_mode
+```
+
+### Pipeline P2 — `p2_gajah_hydrology.py`
+
+Class utama:
+
+```python
+class GajahHydrologyPipeline:
+    ...
+```
+
+Pipeline menggabungkan informasi tutupan lahan dan curah hujan untuk melakukan simulasi runoff.
+
+Output utamanya adalah:
+
+```text
+dynamic_rainfall_peak
+Q_simulated_baseline
+Q_actual_floodevent
+runoff_net_increase
+```
+
+Perbedaan runoff dihitung menggunakan kondisi baseline dan kondisi setelah skenario degradasi.
+
+### Pipeline P3 — `p3_meureudu_upstream.py`
+
+Class utama:
+
+```python
+class MeureuduUpstreamPipeline:
+    ...
+```
+
+Pipeline menggunakan:
+
+```text
+DEM / slope
+ESA WorldCover 2020
+Dynamic World
+forest mask
+forest loss mask
+```
+
+Salah satu tahapan utamanya adalah pembatasan forest loss berdasarkan slope:
+
+```python
+critical_clipping = (
+    loss_preevent_ha
+    .updateMask(slope.gt(15))
+    .rename("critical_upstream_deforestation")
+)
+```
+
+Output pipeline meliputi:
+
+```text
+forest_cover_2020
+forest_loss_preevent
+critical_upstream_deforestation
+```
+
+### Pipeline P4 — `p4_causal_modeling.py`
+
+Class utama:
+
+```python
+class SpatialCausalPipeline:
+    ...
+```
+
+Pipeline ini mengintegrasikan output P1 dan P2.
+
+Perubahan vegetasi dihitung melalui:
+
+```python
+ndvi_net_loss = (
+    d_degradation
+    .add(d_destruction)
+    .rename("ndvi_net_loss")
+)
+```
+
+Hotspot gabungan ditentukan melalui kondisi:
+
+```python
+compound_hotspot = (
+    d_degradation.lt(0)
+    .And(d_destruction.lt(0))
+)
+```
+
+P4 juga menghitung percentile ke-75 dari `runoff_net_increase` dan menggunakannya untuk membentuk `significant_runoff_spike`.
+
+Output akhir mencakup:
+
+```text
+d_NDVI_degradation
+d_NDVI_destruction
+ndvi_net_loss
+disturbance_shift
+significant_change_mask
+compound_hotspot
+runoff_increase_resampled
+causal_evidence_tier
+hydro_confirmed_hotspot
+```
+
+Implementasi P4 menggunakan:
+
+```python
+TARGET_CRS = "EPSG:32646"
+TARGET_SCALE = 10
+```
+
+Detail tersebut merupakan bagian dari implementasi source code pada snapshot yang didokumentasikan.
+
+## Service Layer
+
+Service layer berada pada:
+
+```text
+src/services/
+```
+
+### `forensic_service.py`
+
+`ForensicAnalysisService` merupakan orchestrator utama analisis.
+
+Struktur pemanggilan pipeline diimplementasikan melalui:
+
+```python
+p1 = GajahSatellitePipeline(self.roi).execute()
+p2 = GajahHydrologyPipeline(self.roi).execute()
+p3 = MeureuduUpstreamPipeline(self.roi).execute()
+p4 = SpatialCausalPipeline(
+    p1,
+    p2,
+    self.roi
+).execute()
+
+return p1, p2, p3, p4
+```
+
+Service ini juga menyediakan:
+
+* geospatial reduction;
+* validasi metrik;
+* pembuatan laporan;
+* penyimpanan payload JSON.
+
+### `export_service.py`
+
+Service ini menangani ekspor raster analisis ke Google Drive atau target ekspor lainnya.
+
+Pipeline P2, P3, dan P4 dapat diproses untuk ekspor raster. Pada snapshot yang didokumentasikan, ekspor raster P1 dinonaktifkan melalui konfigurasi internal service.
+
+### `topography_service.py`
+
+Service ini menyediakan proses topografi tambahan, termasuk:
+
+* DEM;
+* slope;
+* hillshade;
+* contour.
+
+Service ini digunakan oleh script `generate_countour.py`.
+
+### `transect_service.py`
+
+Service ini digunakan untuk analisis kandidat koridor dan pembuatan transek.
+
+Komponen yang tersedia mencakup:
+
+* candidate area;
+* cost surface;
+* least-cost path;
+* transect generation.
+
+Service ini merupakan workflow pendukung dan tidak dipanggil secara langsung oleh `main.py`.
+
+## Auxiliary Scripts
+
+Selain entry point utama, repository menyediakan beberapa script pendukung.
+
+### `count_tier_area.py`
+
+Script ini menjalankan pipeline analisis kemudian menghitung luas masing-masing `causal_evidence_tier`.
+
+Perhitungan luas menggunakan:
+
+```python
+pixel_area = ee.Image.pixelArea().divide(10000)
+```
+
+sehingga hasil dinyatakan dalam hektar.
+
+Output kemudian ditulis menggunakan:
+
+```python
+GEEEngine.tier_report(
+    tier_info,
+    output_dir
+)
+```
+
+dengan output utama:
+
+```text
+data/output_metrics/tier_area.csv
+```
+
+### `export_assets.py`
+
+Script ini menjalankan pipeline dan memanggil:
+
+```python
+export_service.export_forensic_rasters(
+    pipelines,
+    scale_s2=10,
+    scale_terrain=30
+)
+```
+
+Script juga melakukan polling terhadap task ekspor Google Drive sampai proses selesai.
+
+### `generate_countour.py`
+
+Script ini membentuk ROI hidrologi kemudian menjalankan:
+
+```python
+TopographyService(...).run(
+    contour_interval=10
+)
+```
+
+Hasilnya disimpan berdasarkan timestamp pada:
+
+```text
+data/output_topography/
+```
+
+### `generate_track.py`
+
+Script ini digunakan untuk workflow koridor dan transek.
+
+Parameter utama yang diterapkan pada snapshot meliputi:
+
+```text
+least_cost = True
+optimum elevation = 250 m
+maximum slope = 25°
+elevation weight = 0.4
+slope weight = 0.4
+aspect weight = 0.2
+```
+
+Parameter kandidat area yang digunakan antara lain:
+
+```text
+elevation = 100–300 m
+slope = 5–20°
+minimum area = 40 ha
+transect length = 8000 m
+```
+
+Output raster cost surface ditulis ke:
+
+```text
+data/output_rasters/cost_surface.tif
+```
+
+sedangkan output vektor transek ditulis ke:
+
+```text
+data/output_vectors/
+```
+
+## R Script
+
+Repository juga memiliki script R:
+
+```text
+src/R/plot.R
+```
+
+Script tersebut merupakan komponen pendukung visualisasi dan bukan entry point utama pipeline Python.
+
+Keberadaan script R tidak mengubah arsitektur utama program, yang tetap berpusat pada Python dan Google Earth Engine.
+
+## Environment Definition
+
+Environment program didefinisikan melalui:
+
+```text
+environment.yml
+```
+
+Environment utama:
+
+```yaml
+name: geo-forensic-env
+```
+
+Versi Python:
+
+```yaml
+python=3.11
+```
+
+Dependency mencakup antara lain:
+
+```text
+earthengine-api
+geemap
+google-api-python-client
+pandas
+numpy
+scipy
+scikit-learn
+scikit-image
+rasterio
+geopandas
+shapely
+pydantic
+pydantic-settings
+whitebox
+whiteboxgui
+```
+
+Definisi environment tersebut digunakan untuk menjaga konsistensi dependency pada runtime program.
+
+## Keterlacakan Source Code
+
+Untuk kebutuhan dokumentasi dan identifikasi versi program, source code harus dibaca bersama tiga komponen berikut:
+
+```text
+Repository
+    +
+Git tag
+    +
+Commit SHA
+```
+
+Dalam dokumentasi ini:
+
+```text
+Repository:
+panda-67/elephant_hydrometeorology
+
+Tag:
+hki-v1.0.0
+
+Commit:
+40fe8e299d86358ee0d43373e94b3fe8b044104f
+```
+
+Tag `hki-v1.0.0` digunakan sebagai baseline source code untuk dokumentasi HKI ini.
+
+Perubahan source code setelah commit tersebut tidak secara otomatis menjadi bagian dari versi yang didokumentasikan. Jika terjadi perubahan substantif terhadap source code, versi dokumentasi dan identitas source snapshot perlu diperbarui.
+
+## Repository Source Code
+
+Source code lengkap program dapat ditelusuri pada repository GitHub:
+
+```text
+https://github.com/panda-67/elephant_hydrometeorology
+```
+
+Versi source code yang menjadi dasar dokumentasi dapat ditelusuri menggunakan tag:
+
+```text
+hki-v1.0.0
+```
+
+Penggunaan tag memberikan referensi yang lebih stabil dibandingkan merujuk pada branch aktif karena branch dapat berubah setelah dokumentasi ini diterbitkan.
+
+## Catatan Reproduksibilitas
+
+Source code bergantung pada beberapa komponen eksternal, terutama:
+
+* Google Earth Engine;
+* dataset penginderaan jauh;
+* dataset tutupan lahan;
+* dataset topografi;
+* dataset curah hujan;
+* Python packages;
+* kredensial dan project Google Earth Engine.
+
+Oleh karena itu, reproduksi program tidak hanya bergantung pada source code. Environment, konfigurasi, akses Google Earth Engine, dan ketersediaan dataset eksternal juga harus sesuai.
+
+`environment.yml` mendokumentasikan dependency utama, tetapi tidak mengunci seluruh dependency pada nomor versi yang identik. Dataset eksternal juga dapat mengalami pembaruan atau perubahan pada sisi penyedia data.
+
+Dengan demikian, reproduksibilitas paling kuat diperoleh dengan menggabungkan:
+
+```text
+source snapshot
++
+environment definition
++
+configuration
++
+external dataset identification
++
+Google Earth Engine project
+```
+
+## Penutup Lampiran
+
+Lampiran ini menetapkan hubungan antara dokumentasi program dan source code yang sebenarnya.
+
+Source code utama terdiri atas:
+
+```text
+Entry Point
+    main.py
+
+Configuration
+    config.py
+
+Core Analysis
+    src/core/
+
+Analysis Pipelines
+    src/pipelines/
+
+Service Layer
+    src/services/
+
+Supporting Scripts
+    *.py pada root repository
+
+Supporting Visualization
+    src/R/plot.R
+
+Runtime Definition
+    environment.yml
+```
+
+Seluruh struktur tersebut pada dokumentasi ini mengacu pada snapshot:
+
+```text
+hki-v1.0.0
+40fe8e299d86358ee0d43373e94b3fe8b044104f
+```
+
+Snapshot tersebut menjadi referensi source code untuk dokumentasi program komputer dan memastikan bahwa deskripsi arsitektur, pipeline, dependency, serta workflow pada dokumen ini dapat ditelusuri kembali ke versi source code yang sama.

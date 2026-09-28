@@ -1,0 +1,130 @@
+## Tujuan Program
+
+Program dikembangkan untuk menyediakan kerangka analisis spasial dan hidrometeorologi yang dapat mengintegrasikan berbagai sumber data lingkungan dalam satu workflow komputasi.
+
+Secara khusus, program bertujuan untuk:
+
+1. mengolah data penginderaan jauh untuk memperoleh informasi kondisi vegetasi;
+2. mengidentifikasi perubahan tutupan dan kehilangan hutan;
+3. menganalisis karakteristik topografi wilayah kajian;
+4. mengestimasi respons hidrologi berdasarkan curah hujan dan karakteristik permukaan;
+5. mengintegrasikan beberapa sumber bukti spasial;
+6. menghasilkan informasi spasial yang dapat digunakan dalam analisis konektivitas lanskap;
+7. menyediakan keluaran dalam format yang dapat digunakan kembali untuk analisis SIG dan analisis lanjutan.
+
+## Fungsi Utama
+
+Fungsi utama program dikelompokkan menjadi beberapa bagian.
+
+### Delineasi Wilayah Analisis
+
+Program menggunakan informasi hidrologi dari HydroSHEDS untuk memperoleh wilayah analisis berbasis jaringan dan batas hidrologi.
+
+Hasil delineasi digunakan sebagai ROI pada tahapan analisis berikutnya.
+
+###  Pemrosesan Data Vegetasi
+
+Program melakukan pemrosesan data Sentinel-2, Landsat, dan Sentinel-1 sesuai kebutuhan analisis.
+
+Informasi indeks vegetasi seperti NDVI dan NDMI digunakan untuk mengevaluasi perubahan kondisi permukaan.
+
+### Analisis Tutupan Lahan
+
+Program menyediakan fungsi untuk memperoleh informasi tutupan lahan menggunakan:
+
+- ESA WorldCover;
+- Google Dynamic World.
+
+Data tersebut dapat digunakan untuk membentuk mask hutan dan non-hutan serta mengidentifikasi perubahan status hutan.
+
+### Analisis Hidrologi
+
+Program menerapkan pendekatan SCS-CN untuk menghasilkan estimasi limpasan permukaan.
+
+Curah hujan harian CHIRPS digunakan sebagai variabel meteorologis dalam analisis.
+
+### Analisis Topografi
+
+Program menyediakan fungsi pengolahan DEM untuk memperoleh:
+
+- elevasi;
+- slope;
+- aspect;
+- hillshade;
+- contour.
+
+Informasi tersebut dapat digunakan sebagai parameter analisis medan dan sebagai komponen dalam pemodelan spasial.
+
+### Integrasi Pipeline
+
+Empat pipeline analisis utama digunakan untuk mengorganisasi proses analisis:
+
+| Pipeline | Fungsi |
+|---|---|
+| P1 | Analisis multitemporal vegetasi |
+| P2 | Simulasi limpasan berbasis SCS-CN dan curah hujan |
+| P3 | Analisis kehilangan hutan pada area dengan kemiringan tertentu |
+| P4 | Integrasi bukti spasial dan pembentukan `causal_evidence_tier` |
+
+Pembagian pipeline memungkinkan setiap tahap analisis memiliki fungsi dan keluaran yang terdefinisi.
+
+### Validasi Metrik
+
+Program menyediakan mekanisme validasi terhadap metrik hasil analisis melalui komponen service.
+
+Validasi digunakan untuk memeriksa hasil reduksi dan keluaran analisis sebelum laporan hasil dibuat.
+
+### Ekspor Data
+
+Program menyediakan service khusus untuk mengekspor hasil analisis spasial.
+
+Ekspor dapat digunakan untuk menghasilkan raster yang kemudian dapat digunakan dalam perangkat lunak SIG atau workflow analisis lainnya.
+
+### Analisis Kandidat Transek
+
+Program menyediakan fungsi pendukung untuk menghasilkan kandidat area dan transek berdasarkan kombinasi parameter topografi.
+
+Pendekatan dapat menggunakan *cost surface* dan *least-cost path* untuk menentukan jalur berdasarkan kriteria yang telah ditetapkan.
+
+## Entry Point Program
+
+Entry point utama program adalah:
+
+```text
+main.py
+````
+
+Eksekusi:
+
+```bash
+python main.py
+```
+
+Entry point tambahan tersedia untuk fungsi tertentu:
+
+```text
+count_tier_area.py
+export_assets.py
+generate_countour.py
+generate_track.py
+```
+
+Keempat script tersebut berfungsi sebagai utilitas atau workflow khusus dan tidak seluruhnya dipanggil oleh `main.py`.
+
+## Batasan Fungsi pada Versi yang Didokumentasikan
+
+Dokumentasi ini menggambarkan implementasi source code pada versi:
+
+```text
+hki-v1.0.0
+```
+
+Dengan demikian, fungsi yang dijelaskan merupakan fungsi yang tersedia pada snapshot source code tersebut.
+
+Komponen pendukung seperti ekspor asset, analisis topografi, pembuatan transek, dan plotting R merupakan bagian dari repository, tetapi tidak seluruhnya dijalankan oleh workflow default `python main.py`.
+
+Hal tersebut penting untuk membedakan antara:
+
+* **workflow utama program**;
+* **modul analisis yang tersedia**; dan
+* **utility atau workflow pendukung**.

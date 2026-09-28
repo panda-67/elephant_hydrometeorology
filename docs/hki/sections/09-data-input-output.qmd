@@ -1,0 +1,685 @@
+## Gambaran Umum
+
+Program `Elephant Hydrometeorology` menggunakan kombinasi data spasial, penginderaan jauh, topografi, dan hidrometeorologi yang diproses melalui Google Earth Engine serta komponen Python lokal.
+
+Secara umum, aliran data dapat digambarkan sebagai:
+
+```text
+Konfigurasi
+    │
+    ├── Parameter waktu
+    ├── Mode sensor
+    └── Parameter analisis
+          │
+          ▼
+Google Earth Engine
+    │
+    ├── HydroSHEDS
+    ├── Sentinel-2 / Sentinel-1
+    ├── ESA WorldCover
+    ├── Dynamic World
+    ├── CHIRPS
+    └── DEM
+          │
+          ▼
+Analisis Core
+    │
+    ├── Vegetasi
+    ├── Land cover
+    ├── Hidrologi
+    └── Terrain
+          │
+          ▼
+Pipeline P1–P4
+          │
+          ▼
+Reduction dan Validasi
+          │
+          ├── Raster / ee.Image
+          ├── Statistik
+          ├── GeoJSON
+          └── JSON metrics
+```
+
+Data input utama tidak disimpan sebagai file raster atau tabel besar di dalam repository. Sebagian besar data ilmiah diperoleh secara langsung melalui Google Earth Engine pada saat program dijalankan.
+
+## Data Konfigurasi
+
+Parameter analisis utama didefinisikan dalam:
+
+```text
+config.py
+```
+
+Parameter tersebut mengendalikan periode pengamatan, mode sensor, dan periode kejadian.
+
+Kelompok parameter waktu terdiri atas:
+
+```text
+F_BASELINE_START
+F_BASELINE_END
+
+F_PRE_EVENT_START
+F_PRE_EVENT_END
+
+F_POST_EVENT_START
+F_POST_EVENT_END
+
+F_FLOOD_EVENT_START
+F_FLOOD_EVENT_END
+```
+
+Parameter tersebut digunakan oleh pipeline untuk menentukan periode pengambilan citra dan curah hujan.
+
+Mode sensor satelit dikendalikan melalui:
+
+```text
+SATELLITE_MODE
+```
+
+P1 menggunakan nilai tersebut untuk memilih mode penginderaan jauh yang digunakan oleh `VegetationAnalyzer`.
+
+## Data Batas Analisis dan Hidrologi
+
+### HydroSHEDS
+
+ROI analisis diperoleh secara otomatis melalui `GEEEngine` menggunakan data HydroSHEDS.
+
+Proses ini dilakukan melalui:
+
+```python
+self.engine.get_hydro_roi()
+```
+
+ROI tersebut kemudian digunakan oleh seluruh pipeline:
+
+```text
+P1 → roi
+P2 → roi
+P3 → roi
+P4 → roi
+```
+
+Dengan demikian, batas analisis tidak perlu diberikan sebagai shapefile lokal pada eksekusi utama.
+
+### GeoJSON ROI
+
+ROI dapat diekspor menggunakan:
+
+```python
+ForensicAnalysisService.export_roi()
+```
+
+Nama file default:
+
+```text
+tangse_meureudu_roi.geojson
+```
+
+File tersebut ditujukan untuk pemeriksaan atau visualisasi menggunakan perangkat lunak GIS seperti QGIS atau ArcGIS.
+
+## Data Penginderaan Jauh Vegetasi
+
+Data penginderaan jauh digunakan terutama oleh `VegetationAnalyzer` dan P1.
+
+Mode yang tersedia dalam arsitektur program mencakup:
+
+```text
+Sentinel-2
+Sentinel-1
+```
+
+P1 kemudian menghasilkan indeks:
+
+```text
+NDVI
+NDMI
+```
+
+### Sentinel-2
+
+Pada mode Sentinel-2, data optik digunakan untuk menghasilkan indeks vegetasi dan kelembapan.
+
+Komposit dibentuk berdasarkan periode:
+
+```text
+Baseline
+Pre-event
+Post-event
+```
+
+Kemudian digunakan untuk menghitung:
+
+```text
+NDVI_baseline
+NDVI_preevent
+NDVI_postevent
+
+NDMI_baseline
+NDMI_preevent
+NDMI_postevent
+```
+
+P1 juga memiliki pengecekan terhadap koleksi Sentinel-2. Jika koleksi pre-event kosong, program menghasilkan `RuntimeError` dan menyarankan penggunaan mode Sentinel-1.
+
+### Sentinel-1
+
+Mode Sentinel-1 disediakan sebagai alternatif ketika data Sentinel-2 tidak tersedia atau terlalu terpengaruh kondisi awan.
+
+Perbedaan resolusi analisis pada tahap percentile P1 juga diperhitungkan:
+
+```text
+Sentinel-2 → scale 30 m
+Sentinel-1 → scale 20 m
+```
+
+Nilai tersebut merupakan parameter implementasi pada P1 untuk operasi `reduceRegion()`.
+
+## Data Tutupan Lahan
+
+Analisis tutupan lahan menggunakan dua sumber utama:
+
+```text
+ESA WorldCover 2020
+Google Dynamic World
+```
+
+### ESA WorldCover 2020
+
+WorldCover digunakan sebagai kondisi baseline.
+
+Dataset yang digunakan oleh kode:
+
+```text
+ESA/WorldCover/v100/2020
+```
+
+Band yang digunakan:
+
+```text
+Map
+```
+
+Pada implementasi `LandCoverAnalyzer`, kelas hutan WorldCover ditentukan dengan:
+
+```python
+image.eq(10)
+```
+
+yang menghasilkan:
+
+```text
+forest_mask
+```
+
+### Dynamic World
+
+Dynamic World digunakan untuk memperoleh kondisi tutupan lahan pada periode pre-event yang ditentukan melalui konfigurasi.
+
+Dataset:
+
+```text
+GOOGLE/DYNAMICWORLD/V1
+```
+
+Band:
+
+```text
+label
+```
+
+Komposit temporal dibuat menggunakan mode:
+
+```python
+collection.select("label").reduce(
+    ee.Reducer.mode()
+)
+```
+
+Kelas hutan Dynamic World ditentukan dengan:
+
+```python
+image.eq(1)
+```
+
+### Forest Loss
+
+Perubahan hutan dihitung dari perbandingan mask hutan baseline dan pre-event:
+
+```text
+Forest 2020 = 1
+Forest 2025 = 0
+```
+
+Secara logika:
+
+$$
+ForestLoss =
+Forest_{baseline}
+\land
+\neg Forest_{pre-event}
+$$
+
+Output ini digunakan oleh P2 dan P3.
+
+## Data Hidrometeorologi
+
+### CHIRPS
+
+Curah hujan kejadian diperoleh melalui modul hidrologi.
+
+P2 menggunakan fungsi:
+
+```python
+get_dynamic_peak_rainfall()
+```
+
+Periode data ditentukan oleh:
+
+```text
+F_FLOOD_EVENT_START
+F_FLOOD_EVENT_END
+```
+
+Hasilnya disimpan sebagai:
+
+```text
+dynamic_rainfall_peak
+```
+
+Band ini menjadi input rainfall pada simulasi runoff.
+
+### Curve Number
+
+P2 menggunakan pendekatan Curve Number untuk mengestimasi runoff.
+
+Curve Number baseline dibangun dari data WorldCover:
+
+```python
+worldcover_to_cn(lc_2020_raw)
+```
+
+Kemudian skenario perubahan tutupan lahan diterapkan pada area forest loss:
+
+```python
+apply_degradation_scenario(
+    cn_image=cn_baseline,
+    degradation_mask=loss_preevent,
+    degraded_cn=88
+)
+```
+
+Dengan demikian terdapat dua kondisi utama:
+
+```text
+CN baseline
+CN pre-event / degraded
+```
+
+Kedua kondisi tersebut digunakan untuk menghitung:
+
+```text
+Q_simulated_baseline
+Q_actual_floodevent
+```
+
+Kemudian selisihnya dihitung sebagai:
+
+```text
+runoff_net_increase
+```
+
+## Data Topografi
+
+Data topografi digunakan oleh `TerrainAnalyzer`.
+
+Komponen yang tersedia dalam arsitektur program meliputi:
+
+```text
+DEM
+Slope
+Aspect
+Hillshade
+```
+
+Dalam pipeline utama, DEM dan slope digunakan secara langsung oleh `ForensicAnalysisService`.
+
+DEM digunakan untuk menghasilkan statistik:
+
+```text
+elevation_mean
+elevation_median
+elevation_max
+```
+
+Slope digunakan untuk:
+
+```text
+slope statistics
+critical slope analysis
+```
+
+P3 menggunakan kondisi:
+
+```text
+slope > 15°
+```
+
+untuk menentukan `critical_upstream_deforestation`.
+
+## Data Turunan Antar-Modul
+
+Tidak seluruh input pipeline berasal langsung dari dataset eksternal. Sebagian besar data yang digunakan oleh suatu pipeline merupakan output dari modul sebelumnya.
+
+| Data                  | Sumber                       | Penggunaan             |
+| --------------------- | ---------------------------- | ---------------------- |
+| ROI                   | HydroSHEDS                   | Semua pipeline         |
+| NDVI                  | Sentinel-2/Sentinel-1        | P1, P4                 |
+| NDMI                  | Sentinel-2/Sentinel-1        | P1, statistik          |
+| Forest mask 2020      | WorldCover                   | P2, P3                 |
+| Forest mask pre-event | Dynamic World                | P2, P3                 |
+| Forest loss           | WorldCover + Dynamic World   | P2, P3                 |
+| Rainfall peak         | CHIRPS                       | P2                     |
+| Curve Number          | WorldCover + hydrology model | P2                     |
+| Runoff baseline       | P2                           | P4                     |
+| Runoff increase       | P2                           | P4                     |
+| Slope                 | DEM                          | P3, reduction          |
+| Causal tier           | P4                           | Statistik dan analisis |
+
+## Output Raster
+
+Pipeline menghasilkan objek `ee.Image` multi-band selama proses analisis.
+
+Output P1 mencakup:
+
+```text
+NDVI_baseline
+NDMI_baseline
+NDVI_preevent
+NDMI_preevent
+NDVI_postevent
+NDMI_postevent
+d_NDVI_degradation
+d_NDVI_destruction
+NDVI_Degradation_Mask
+ndvi_degradation_masif
+```
+
+Output P2:
+
+```text
+dynamic_rainfall_peak
+Q_simulated_baseline
+Q_actual_floodevent
+runoff_net_increase
+```
+
+Output P3:
+
+```text
+forest_cover_2020
+forest_loss_preevent
+critical_upstream_deforestation
+```
+
+Output P4:
+
+```text
+d_NDVI_degradation
+d_NDVI_destruction
+ndvi_net_loss
+disturbance_shift
+significant_change_mask
+compound_hotspot
+runoff_increase_resampled
+causal_evidence_tier
+hydro_confirmed_hotspot
+```
+
+Raster tersebut pada tahap pipeline masih berupa objek server-side Google Earth Engine. Ekspor raster dilakukan melalui workflow tambahan yang menggunakan `ExportAssetsService`.
+
+## Output Statistik
+
+`ForensicAnalysisService` menggabungkan DEM, slope, P1, P2, P3, dan P4 menjadi satu master image:
+
+```python
+master_forensic_image = ee.Image.cat([
+    dem,
+    slope,
+    p1,
+    p2,
+    p3,
+    p4
+])
+```
+
+Statistik kemudian dihitung menggunakan kombinasi reducer:
+
+```text
+Mean
+Median
+Maximum
+Sum
+```
+
+Operasi tersebut dilakukan menggunakan `reduceRegion()` pada ROI.
+
+Contoh struktur nama output:
+
+```text
+elevation_mean
+elevation_median
+elevation_max
+
+Slope_mean
+Slope_median
+Slope_max
+
+NDVI_preevent_mean
+NDVI_preevent_median
+
+d_NDVI_degradation_mean
+d_NDVI_destruction_mean
+
+runoff_net_increase_mean
+runoff_net_increase_median
+```
+
+Selain statistik band, program juga menyimpan:
+
+```text
+roi_total_area_m2
+timeline_years
+```
+
+## Output Metrics JSON
+
+Setelah statistik mentah diperoleh, `parse_and_validate_metrics()` mengubah hasil tersebut menjadi struktur metrik yang lebih terorganisasi.
+
+Payload JSON terdiri atas beberapa kelompok.
+
+### Metadata
+
+```json
+{
+    "generated_at": "...",
+    "analysis_period_years": 0,
+    "watershed_area_ha": 0
+}
+```
+
+### Watershed physiography
+
+Berisi:
+
+```text
+mean elevation
+median elevation
+maximum elevation
+mean slope
+median slope
+maximum slope
+```
+
+### Pre-event land degradation
+
+Berisi:
+
+```text
+forest area 2020
+forest area 2025
+forest loss
+forest loss percentage
+annual deforestation rate
+critical slope deforestation
+NDVI degradation hotspot
+NDVI degradation statistics
+```
+
+### Pre-event environmental baseline
+
+Berisi:
+
+```text
+NDVI mean / median / max
+NDMI mean / median / max
+```
+
+### Post-event vegetation response
+
+Berisi:
+
+```text
+NDVI mean / median / max
+mean NDVI destruction
+median NDVI change
+maximum instantaneous NDVI loss
+NDMI mean / median / max
+mean NDMI net change
+```
+
+### Hydrological forensics
+
+Berisi:
+
+```text
+peak rainfall
+baseline runoff
+flood-event runoff
+runoff increase
+runoff increase percentage
+median runoff change
+maximum runoff spike
+watershed runoff gain
+total watershed runoff volume
+```
+
+### Forensic attribution
+
+Berisi metrik ringkasan:
+
+```text
+pre-event forest loss
+critical deforestation
+vegetation damage
+hydrologic amplification
+peak rainfall trigger
+```
+
+## Lokasi Output
+
+Directory runtime utama yang digunakan program adalah:
+
+```text
+data/
+├── output_metrics/
+├── output_rasters/
+├── output_topography/
+└── output_vectors/
+```
+
+Repository pada tag `hki-v1.0.0` tidak menyimpan hasil analisis tersebut sebagai dataset runtime. Struktur `data/` pada source snapshot hanya mempertahankan:
+
+```text
+data/.gitkeep
+```
+
+Dengan demikian, file output dibuat ketika program dijalankan dan tidak menjadi bagian dari source dataset pada repository.
+
+### `output_metrics`
+
+Digunakan untuk:
+
+```text
+JSON metrics
+tier area report
+```
+
+Contoh file metrics:
+
+```text
+tangse_meureudu_metrics_YYYYMMDD_HHMMSS.json
+```
+
+### `output_rasters`
+
+Digunakan oleh workflow ekspor raster.
+
+`ExportAssetsService` menyediakan mekanisme ekspor hasil analisis ke Google Drive melalui Google Earth Engine.
+
+### `output_vectors`
+
+Digunakan untuk hasil berbasis vektor, termasuk output workflow transek dan ekspor ROI.
+
+### `output_topography`
+
+Digunakan oleh workflow `generate_countour.py` untuk menyimpan hasil analisis topografi dan kontur.
+
+## Output Tambahan
+
+Selain output utama pipeline, repository menyediakan beberapa workflow tambahan.
+
+`export_assets.py` menjalankan pipeline P1–P4 dan kemudian menggunakan `ExportAssetsService` untuk mengekspor raster. Proses ekspor menggunakan task Google Earth Engine dan melakukan polling terhadap task yang sedang berjalan.
+
+`generate_countour.py` menjalankan analisis topografi dan menyimpan hasil berdasarkan timestamp:
+
+```text
+data/output_topography/YYYYMMDD_HHMMSS/
+```
+
+`generate_track.py` menghasilkan cost surface dan transek. Salah satu output raster yang ditentukan dalam kode adalah:
+
+```text
+data/output_rasters/cost_surface.tif
+```
+
+Output vektor transek diarahkan ke:
+
+```text
+data/output_vectors/
+```
+
+`count_tier_area.py` menghitung luas setiap `causal_evidence_tier` dalam hektar dan menyimpan hasil melalui:
+
+```python
+GEEEngine.tier_report()
+```
+
+## Ringkasan Input dan Output
+
+| Tahap         | Input utama                       | Output utama                     |
+| ------------- | --------------------------------- | -------------------------------- |
+| ROI           | HydroSHEDS                        | `ee.Geometry`                      |
+| P1            | Sentinel-1/Sentinel-2             | NDVI, NDMI, delta NDVI           |
+| P2            | WorldCover, Dynamic World, CHIRPS | Rainfall, CN, runoff             |
+| P3            | WorldCover, Dynamic World, DEM    | Forest loss, critical slope loss |
+| P4            | P1 + P2                           | Causal evidence tier             |
+| Reduction     | DEM + P1–P4                       | Statistik spasial                |
+| Validation    | Raw statistics                    | Validated metrics                |
+| Metrics       | Validated metrics                 | JSON                             |
+| ROI export    | HydroSHEDS ROI                    | GeoJSON                          |
+| Raster export | P1–P4                             | Raster export                    |
+| Topography    | ROI + DEM                         | Terrain/contour outputs          |
+| Transect      | Terrain/constraint layers         | Cost surface + GeoJSON           |
+
+Secara keseluruhan, program menggunakan arsitektur **data-on-demand**: data primer diperoleh dari sumber penginderaan jauh dan hidrometeorologi melalui Google Earth Engine pada saat eksekusi, sedangkan hasil analisis diturunkan menjadi raster, statistik, GeoJSON, dan JSON metrics sesuai workflow yang dijalankan.

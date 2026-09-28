@@ -1,0 +1,94 @@
+## Nama Program
+
+**Elephant Hydrometeorology**
+
+## Jenis Program
+
+Program komputer berbasis Python untuk analisis spasial dan hidrometeorologi berbasis Google Earth Engine (GEE), dengan dukungan analisis geospasial dan visualisasi menggunakan R.
+
+## Fungsi Utama
+
+Program dirancang untuk melakukan integrasi analisis:
+
+- kondisi dan perubahan vegetasi;
+- tutupan dan kehilangan hutan;
+- karakteristik topografi;
+- curah hujan;
+- estimasi limpasan permukaan;
+- analisis spasial berbasis tingkat bukti (*causal evidence tier*);
+- analisis kandidat koridor dan transek;
+- ekspor hasil analisis dalam bentuk data raster, vektor, dan metrik.
+
+## Pengembang
+
+**Abdullah, Muhammad Ali Sarong, Muhammad Rusdi, Samsul Muarrif, Muammar Fakhrurrazi, Yuri Gagarin, Hanif Raihan, Cut Sarah Rizkita Rahmi**
+
+> Nama pada bagian ini perlu disesuaikan dengan identitas resmi pencipta/pemegang hak yang digunakan dalam dokumen pengajuan HKI.
+
+## Institusi
+
+**Pusat Riset Konservasi Gajah dan Biodiversitas Hutan (PKGB) USK**
+
+## Bahasa Pemrograman
+
+Program utama dikembangkan menggunakan **Python**.
+
+Program juga menyediakan komponen **R** untuk visualisasi hasil analisis melalui:
+
+```text
+src/R/plot.R
+````
+
+## Teknologi Utama
+
+Teknologi dan pustaka utama yang digunakan meliputi:
+
+* Python;
+* Google Earth Engine API;
+* geemap;
+* NumPy;
+* pandas;
+* SciPy;
+* scikit-learn;
+* scikit-image;
+* Rasterio;
+* GeoPandas;
+* Shapely;
+* Pydantic;
+* R.
+
+Konfigurasi environment tersedia pada:
+
+```text
+environment.yml
+```
+
+## Platform Analisis
+
+Program menggunakan **Google Earth Engine** sebagai platform pemrosesan dan analisis data geospasial berbasis cloud.
+
+Data dan hasil yang diproses dapat diintegrasikan lebih lanjut dengan perangkat lunak Sistem Informasi Geografis (SIG), termasuk QGIS.
+
+## Repository Source Code
+
+Source code program disimpan pada repository:
+
+```text
+panda-67/elephant_hydrometeorology
+```
+
+Repository digunakan sebagai media penyimpanan, pengelolaan versi, dan dokumentasi source code program.
+
+## Versi Source Code yang Didokumentasikan
+
+Dokumentasi ini merujuk secara spesifik pada snapshot source code:
+
+```text
+Git tag : hki-v1.0.0
+Commit  : 40fe8e299d86358ee0d43373e94b3fe8b044104f
+Tanggal : 17 September 2026
+```
+
+Snapshot tersebut digunakan sebagai acuan tetap untuk dokumentasi program pada versi ini.
+
+Perubahan source code setelah snapshot tersebut tidak secara otomatis dianggap sebagai bagian dari versi yang didokumentasikan. Perubahan substantif terhadap source code perlu dicatat melalui versi atau tag berikutnya.
