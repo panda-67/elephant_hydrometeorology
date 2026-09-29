@@ -41,6 +41,7 @@ format:
         \KOMAoptions{headings=small,chapterprefix=false}
         \setkomafont{disposition}{\sffamily\bfseries}
         \setkomafont{chapter}{\sffamily\bfseries\Large}
+        \setkomafont{author}{\sffamily\bfseries\small}
 
         % --- Daftar isi: ruang nomor lebih lega
         \RedeclareSectionCommand[tocnumwidth=1.4em]{chapter}

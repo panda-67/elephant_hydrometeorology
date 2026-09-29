@@ -21,7 +21,14 @@ Program dirancang untuk melakukan integrasi analisis:
 
 ## Pengembang
 
-**Abdullah, Muhammad Ali Sarong, Muhammad Rusdi, Samsul Muarrif, Muammar Fakhrurrazi, Yuri Gagarin, Hanif Raihan, Cut Sarah Rizkita Rahmi**
+ - Abdullah
+ - Muhammad Ali Sarong
+ - Muhammad Rusdi
+ - Samsul Muarrif
+ - Muammar Fakhrurrazi
+ - Yuri Gagarin
+ - Hanif Raihan
+ - Cut Sarah Rizkita Rahmi
 
 > Nama pada bagian ini perlu disesuaikan dengan identitas resmi pencipta/pemegang hak yang digunakan dalam dokumen pengajuan HKI.
 

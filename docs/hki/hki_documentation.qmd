@@ -1,7 +1,15 @@
 ---
 title: "Dokumentasi Program Komputer"
 subtitle: "Elephant Hydrometeorology"
-author: "Samsul Muarrif, S.Si"
+author:
+  - "Abdullah"
+  - "Muhammad Ali Sarong"
+  - "Muhammad Rusdi"
+  - "Samsul Muarrif"
+  - "Muammar Fakhrurrazi"
+  - "Yuri Gagarin"
+  - "Hanif Raihan"
+  - "Cut Sarah Rizkita Rahmi"
 date: "28 September 2026"
 ---
 
