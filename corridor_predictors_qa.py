@@ -1,4 +1,4 @@
-from src.corridor.qa import CorridorPredictorQA
+from src.corridor.predictors_qa import CorridorPredictorQA
 
 
 if __name__ == "__main__":
