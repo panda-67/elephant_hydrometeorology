@@ -42,7 +42,7 @@ class GEEEngine:
         roi_info = roi.getInfo()
 
         # Menentukan direktori penyimpanan
-        output_dir = os.path.join("data", "output_metrics")
+        output_dir = os.path.join("data", "output_vectors")
         os.makedirs(output_dir, exist_ok=True)
         geojson_path = os.path.join(output_dir, filename)
 

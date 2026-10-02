@@ -14,6 +14,7 @@ class TerrainAnalyzer:
                 ee.Image("users/nandadata02/DEMNAS-ACEH")
                 .clip(self.roi)
                 .select(["b1"], ["elevation"])
+                .rename("elevation")
             )
         else:
             col = (
