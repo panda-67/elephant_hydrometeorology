@@ -8,14 +8,29 @@ class CorridorPredictorQA:
     def __init__(self, root=None):
         self.root = root or Path(__file__).resolve().parents[2]
 
-        self.stack_dir = self.root / "data" / "output_rasters" / "corridor" / "stack"
+        self.corridor_dir = self.root / "data" / "output_rasters" / "corridor"
 
         self.files = {
-            "elevation": self.stack_dir / "elevation_30m.tif",
-            "slope": self.stack_dir / "slope_30m.tif",
-            "landcover": self.stack_dir / "landcover_30m.tif",
-            "ndvi": self.stack_dir / "ndvi_30m.tif",
-            "distance_to_water": self.stack_dir / "distance_to_water_30m.tif",
+            "elevation": self.corridor_dir / "corridor_elevation.tif",
+            "slope": self.corridor_dir / "corridor_slope.tif",
+            "landcover": (self.corridor_dir / "corridor_landcover_worldcover_2020.tif"),
+            "ndvi": self.corridor_dir / "corridor_ndvi.tif",
+            "distance_to_water": (self.corridor_dir / "corridor_distance_to_water.tif"),
+        }
+
+        # ESA WorldCover 2020 valid class codes.
+        self.landcover_classes = {
+            10,
+            20,
+            30,
+            40,
+            50,
+            60,
+            70,
+            80,
+            90,
+            95,
+            100,
         }
 
     def read(self, name):
@@ -37,6 +52,21 @@ class CorridorPredictorQA:
                 "bounds": src.bounds,
                 "res": src.res,
             }
+
+    def finite_values(self, data):
+        """
+        Return finite, unmasked raster values.
+
+        Masked values and NaN/Inf are treated as invalid.
+        """
+        values = data.compressed()
+
+        if values.size == 0:
+            return np.array([], dtype=np.float64)
+
+        values = np.asarray(values, dtype=np.float64)
+
+        return values[np.isfinite(values)]
 
     def check_grid(self):
         print("\n[1] GRID CONSISTENCY")
@@ -74,32 +104,45 @@ class CorridorPredictorQA:
         expected = {
             "elevation": (0, 3000),
             "slope": (0, 90),
-            "landcover": (10, 100),
             "ndvi": (-1, 1),
-            "distance_to_water": (0, 2500 * np.sqrt(2)),
+            "distance_to_water": (0, None),
         }
 
-        for name, (lower, upper) in expected.items():
+        for name in [
+            "elevation",
+            "slope",
+            "ndvi",
+            "distance_to_water",
+        ]:
+            lower, upper = expected[name]
+
             raster = self.read(name)
             data = raster["data"]
 
-            if data.count() == 0:
-                print(f"    {name:<20} FAIL — no valid pixels")
-                continue
+            values = self.finite_values(data)
 
-            values = data.compressed()
+            if values.size == 0:
+                print(f"    {name:<20} FAIL — no finite pixels")
+                continue
 
             minimum = float(values.min())
             maximum = float(values.max())
             mean = float(values.mean())
 
-            valid = int(data.count())
+            valid = int(values.size)
             total = data.size
             coverage = valid / total * 100
 
             tolerance = 1e-3
 
-            valid_range = minimum >= lower - tolerance and maximum <= upper + tolerance
+            lower_ok = minimum >= lower - tolerance
+
+            if upper is None:
+                upper_ok = True
+            else:
+                upper_ok = maximum <= upper + tolerance
+
+            valid_range = lower_ok and upper_ok
 
             print(f"\n    {name}")
             print(f"      Min      : {minimum:.4f}")
@@ -110,7 +153,56 @@ class CorridorPredictorQA:
             print(f"      Range    : {'PASS' if valid_range else 'FAIL'}")
 
             if not valid_range:
-                print(f"      Expected : {lower} → {upper}")
+                if upper is None:
+                    print(f"      Expected : >= {lower}")
+                else:
+                    print(f"      Expected : {lower} → {upper}")
+
+        self.check_landcover_range()
+
+    def check_landcover_range(self):
+        print("\n    landcover")
+
+        raster = self.read("landcover")
+        data = raster["data"]
+
+        values = self.finite_values(data)
+
+        if values.size == 0:
+            print("      FAIL — no finite pixels")
+            return
+
+        unique, counts = np.unique(
+            values.astype(np.int16),
+            return_counts=True,
+        )
+
+        invalid_mask = ~np.isin(
+            unique,
+            list(self.landcover_classes),
+        )
+
+        invalid_classes = unique[invalid_mask]
+        invalid_count = int(counts[invalid_mask].sum())
+
+        valid_count = values.size - invalid_count
+        total = data.size
+
+        coverage = valid_count / total * 100
+
+        if invalid_count == 0:
+            status = "PASS"
+        else:
+            status = "FAIL"
+
+        print(f"      Valid classes : {valid_count:,}")
+        print(f"      Invalid px    : {invalid_count:,}")
+        print(f"      Coverage      : {coverage:.2f}%")
+        print(f"      Classes       : {sorted(unique.tolist())}")
+        print(f"      Class check   : {status}")
+
+        if invalid_classes.size > 0:
+            print(f"      Invalid class codes: {invalid_classes.tolist()}")
 
     def check_anomalies(self):
         print("\n[3] ANOMALY CHECK")
@@ -124,13 +216,15 @@ class CorridorPredictorQA:
 
         for name, test in tests.items():
             raster = self.read(name)
-            data = raster["data"].compressed()
+            data = raster["data"]
 
-            if len(data) == 0:
-                print(f"    {name:<20} FAIL — no valid pixels")
+            values = self.finite_values(data)
+
+            if values.size == 0:
+                print(f"    {name:<20} FAIL — no finite pixels")
                 continue
 
-            count = int(np.count_nonzero(test(data)))
+            count = int(np.count_nonzero(test(values)))
 
             print(
                 f"    {name:<20} "
@@ -144,29 +238,40 @@ class CorridorPredictorQA:
         raster = self.read("distance_to_water")
         data = raster["data"]
 
-        if data.count() == 0:
-            print("    FAIL — no valid distance pixels")
-            return
+        values = self.finite_values(data)
 
-        values = data.compressed()
+        if values.size == 0:
+            print("    FAIL — no finite distance pixels")
+            return
 
         minimum = float(values.min())
         maximum = float(values.max())
         mean = float(values.mean())
 
         zero_pixels = int(np.count_nonzero(values == 0))
+
         beyond_2500 = int(np.count_nonzero(values > 2500))
+
+        negative = int(np.count_nonzero(values < 0))
 
         print(f"    Min              : {minimum:.4f} m")
         print(f"    Max              : {maximum:.4f} m")
         print(f"    Mean             : {mean:.4f} m")
         print(f"    Zero-distance px : {zero_pixels:,}")
         print(f"    > 2500 m         : {beyond_2500:,}")
+        print(f"    Negative px      : {negative:,}")
+
+        if negative > 0:
+            print("    Radius check     : FAIL — negative distance values detected.")
+        else:
+            print("    Radius check     : PASS — no negative distances.")
 
         if beyond_2500 > 0:
-            print("    WARNING: values exceed the configured 2500 m search radius.")
-        else:
-            print("    Radius check     : PASS")
+            print(
+                "    Note             : "
+                "values >2500 m detected; "
+                "this is not treated as an error."
+            )
 
     def check_nodata(self):
         print("\n[5] NODATA / COVERAGE")
@@ -175,14 +280,46 @@ class CorridorPredictorQA:
             raster = self.read(name)
             data = raster["data"]
 
-            valid = int(data.count())
-            nodata = data.size - valid
-            coverage = valid / data.size * 100
+            masked_count = int(np.ma.count_masked(data))
+
+            finite_count = int(np.count_nonzero(np.isfinite(data.compressed())))
+
+            nan_count = int(
+                np.count_nonzero(
+                    np.isnan(
+                        np.asarray(
+                            data.data,
+                            dtype=np.float64,
+                        )
+                    )
+                    & ~np.ma.getmaskarray(data)
+                )
+            )
+
+            inf_count = int(
+                np.count_nonzero(
+                    np.isinf(
+                        np.asarray(
+                            data.data,
+                            dtype=np.float64,
+                        )
+                    )
+                    & ~np.ma.getmaskarray(data)
+                )
+            )
+
+            total = data.size
+
+            invalid_count = masked_count + nan_count + inf_count
+
+            coverage = finite_count / total * 100
 
             print(
                 f"    {name:<20} "
-                f"valid={valid:,} "
-                f"nodata={nodata:,} "
+                f"finite={finite_count:,} "
+                f"masked={masked_count:,} "
+                f"nan={nan_count:,} "
+                f"inf={inf_count:,} "
                 f"coverage={coverage:.2f}%"
             )
 

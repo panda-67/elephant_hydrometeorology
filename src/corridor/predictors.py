@@ -6,6 +6,10 @@ import ee
 import geopandas as gpd
 import requests
 
+from py.utils.gee_drive import (
+    download_earth_engine_export,
+    download_existing_drive_export,
+)
 from src.core.engine import GEEEngine
 from src.corridor.landcover import CorridorLandCover
 from src.corridor.ndvi import CorridorNDVI
@@ -19,7 +23,9 @@ class CorridorPredictors:
     def __init__(self, root: Path | None = None):
         self.root = root if root is not None else Path(__file__).resolve().parents[2]
 
-        self.aoi_path = self.root / "data/output_vectors/KHL_PP_tangse_meureudu.geojson"
+        # Analysis domain:
+        # watershed ROI, bukan KHL source polygon.
+        self.aoi_path = self.root / "data/output_vectors/tangse_meureudu_roi.geojson"
 
         self.output_dir = self.root / "data/output_rasters/corridor"
 
@@ -41,24 +47,24 @@ class CorridorPredictors:
         self.engine = GEEEngine()
 
     def load_aoi(self):
-        """Memuat batas corridor hasil P5."""
-        print("\n[2] Loading corridor boundary...")
+        """Memuat watershed ROI sebagai analysis domain."""
+
+        print("\n[2] Loading watershed analysis domain...")
 
         if not self.aoi_path.exists():
-            raise FileNotFoundError(
-                f"Corridor boundary tidak ditemukan: {self.aoi_path}"
-            )
+            raise FileNotFoundError(f"Watershed ROI tidak ditemukan: {self.aoi_path}")
 
         gdf = gpd.read_file(self.aoi_path)
 
         if gdf.empty:
-            raise ValueError("Corridor boundary tidak memiliki feature.")
+            raise ValueError("Watershed ROI tidak memiliki feature.")
 
         if gdf.crs is None:
-            raise ValueError("Corridor boundary tidak memiliki CRS.")
+            raise ValueError("Watershed ROI tidak memiliki CRS.")
 
         print(f"    Features : {len(gdf):,}")
         print(f"    CRS      : {gdf.crs}")
+        print(f"    Source   : {self.aoi_path}")
 
         if gdf.crs.to_epsg() != 4326:
             gdf = gdf.to_crs("EPSG:4326")
@@ -67,7 +73,7 @@ class CorridorPredictors:
 
         self.aoi = ee.Geometry(geometry.__geo_interface__)
 
-        print("    AOI siap digunakan oleh GEE.")
+        print("    Watershed AOI siap digunakan oleh GEE.")
 
     def initialize_terrain(self):
         """Menginisialisasi terrain predictor."""
@@ -101,22 +107,33 @@ class CorridorPredictors:
         self,
         image: ee.Image,
         filename: str,
-        scale: int = 30,
+        scale: int = 10,
+        crs: str = "EPSG:4326",
     ):
         """
-        Download raster GEE langsung ke lokal.
-        Jika gagal, fallback ke Google Drive.
+        Download raster dari Google Earth Engine langsung ke lokal.
+
+        Parameter:
+        - scale : resolusi output dalam meter
+        - crs   : sistem koordinat output
+        - region: AOI watershed
+        - format: GeoTIFF
+
+        Jika download langsung gagal, otomatis fallback
+        ke Google Drive dengan parameter export yang sama.
         """
 
         output_path = self.output_dir / filename
 
         print(f"    [~] Downloading {filename}...")
+        print(f"        Scale : {scale} m")
+        print(f"        CRS   : {crs}")
 
         try:
             download_url = image.getDownloadURL(
                 {
                     "scale": scale,
-                    "crs": "EPSG:4326",
+                    "crs": crs,
                     "region": self.aoi,
                     "format": "GEO_TIFF",
                 }
@@ -137,12 +154,12 @@ class CorridorPredictors:
 
             content = response.content
 
-            # Raw GeoTIFF
+            # --------------------------------------------------
+            # RAW GEOTIFF
+            # --------------------------------------------------
             if content[:4] in {
                 b"II*\x00",
                 b"MM\x00*",
-                b"II\x2a\x00",
-                b"MM\x00\x2a",
             }:
                 with open(output_path, "wb") as f:
                     f.write(content)
@@ -151,24 +168,25 @@ class CorridorPredictors:
 
                 return str(output_path)
 
-            # ZIP containing GeoTIFF
+            # --------------------------------------------------
+            # ZIP CONTAINING GEOTIFF
+            # --------------------------------------------------
             if zipfile.is_zipfile(io.BytesIO(content)):
                 with zipfile.ZipFile(io.BytesIO(content)) as z:
                     tif_files = [
                         info
                         for info in z.infolist()
-                        if info.filename.lower().endswith(".tif")
+                        if info.filename.lower().endswith((".tif", ".tiff"))
                     ]
 
                     if not tif_files:
                         raise RuntimeError("ZIP GEE tidak mengandung GeoTIFF.")
 
+                    tif_info = tif_files[0]
+
                     with (
-                        z.open(tif_files[0]) as src,
-                        open(
-                            output_path,
-                            "wb",
-                        ) as dst,
+                        z.open(tif_info) as src,
+                        open(output_path, "wb") as dst,
                     ):
                         dst.write(src.read())
 
@@ -181,8 +199,32 @@ class CorridorPredictors:
         except Exception as exc:
             print(f"    [!] Local download failed: {exc}")
 
-            print("    [~] Falling back to Google Drive...")
+            print("    [~] Checking existing Google Drive export...")
+
             filename_prefix = Path(filename).stem
+
+            # --------------------------------------------------
+            # Check existing Drive file first
+            # --------------------------------------------------
+
+            existing_file = download_existing_drive_export(
+                filename_prefix=filename_prefix,
+                output_path=output_path,
+                folder_name="GeoForensic_Tangse_Meureudu",
+            )
+
+            if existing_file is not None:
+                print("    [✓] Using existing Drive export.")
+
+                return existing_file
+
+            # --------------------------------------------------
+            # No existing file → create new EE task
+            # --------------------------------------------------
+
+            print("    [~] No existing Drive export found.")
+
+            print("    [~] Creating new Earth Engine task...")
 
             task = ee.batch.Export.image.toDrive(
                 image=image,
@@ -190,15 +232,22 @@ class CorridorPredictors:
                 folder="GeoForensic_Tangse_Meureudu",
                 fileNamePrefix=filename_prefix,
                 scale=scale,
+                crs=crs,
                 region=self.aoi,
                 maxPixels=1e13,
+                fileFormat="GeoTIFF",
             )
 
             task.start()
 
             print(f"    [✓] Drive task started: {task.id}")
 
-            return task.id
+            return download_earth_engine_export(
+                task=task,
+                filename_prefix=filename_prefix,
+                output_path=output_path,
+                folder_name="GeoForensic_Tangse_Meureudu",
+            )
 
     def export_elevation(self):
         """Menghasilkan dan mengekspor raster elevation."""
@@ -211,7 +260,8 @@ class CorridorPredictors:
         return self.export_local(
             elevation,
             "corridor_elevation.tif",
-            scale=30,
+            scale=10,
+            crs="EPSG:4326",
         )
 
     def export_slope(self):
@@ -225,7 +275,8 @@ class CorridorPredictors:
         return self.export_local(
             slope,
             "corridor_slope.tif",
-            scale=30,
+            scale=10,
+            crs="EPSG:4326",
         )
 
     def export_landcover(self):
@@ -240,6 +291,7 @@ class CorridorPredictors:
             landcover,
             "corridor_landcover_worldcover_2020.tif",
             scale=10,
+            crs="EPSG:4326",
         )
 
     def export_ndvi(self):
@@ -254,6 +306,7 @@ class CorridorPredictors:
             ndvi,
             "corridor_ndvi.tif",
             scale=10,
+            crs="EPSG:4326",
         )
 
     def export_distance_to_water(self):
@@ -266,4 +319,5 @@ class CorridorPredictors:
             distance,
             "corridor_distance_to_water.tif",
             scale=10,
+            crs="EPSG:4326",
         )

@@ -3,7 +3,7 @@ from pathlib import Path
 from src.corridor.resistance import CorridorResistance
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 
 NORMALIZED_DIR = ROOT / "data" / "output_rasters" / "corridor" / "normalized"
 

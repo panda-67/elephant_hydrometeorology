@@ -3,8 +3,7 @@ from pathlib import Path
 import numpy as np
 import rasterio
 
-
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 
 NORMALIZED_DIR = ROOT / "data" / "output_rasters" / "corridor" / "normalized"
 

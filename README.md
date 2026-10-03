@@ -48,7 +48,7 @@ elephant_hydrometeorology
 │   │   ├── hydrology.py  # Pemodelan hidrologi SCS-CN dengan input CHIRPS dinamis
 │   │   ├── landcover.py
 │   │   ├── terrain.py
-│   │   └── vegatation.py
+│   │   └── vegetation.py
 │   ├── pipelines/
 │   │   ├── p1_gajah_satellite.py
 │   │   ├── p2_gajah_hydrology.py

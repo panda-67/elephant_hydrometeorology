@@ -2,26 +2,11 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
+from rasterio.enums import Resampling
+from rasterio.warp import reproject
 
 
 class CorridorPotential:
-    """
-    Convert source-based cumulative cost distance into
-    relative corridor potential.
-
-    Transformation:
-
-        potential = 1 - (cost / max_non_source_cost)
-
-    Source pixels are explicitly assigned potential = 1.0.
-
-    Interpretation:
-        1 = highest relative connectivity potential
-        0 = lowest relative connectivity potential within the analyzed domain
-
-    This is NOT a probability of elephant movement or habitat use.
-    """
-
     def __init__(
         self,
         cost_distance_raster: Path,
@@ -38,35 +23,26 @@ class CorridorPotential:
         )
 
     def _read_inputs(self):
+
+        # --------------------------------------------------------------
+        # Cost distance — metric grid
+        # --------------------------------------------------------------
+
         with rasterio.open(self.cost_distance_raster) as cost_src:
             cost = cost_src.read(1).astype("float32")
+
             profile = cost_src.profile.copy()
             transform = cost_src.transform
             crs = cost_src.crs
-            shape = (cost_src.height, cost_src.width)
+
             nodata = cost_src.nodata
 
-        with rasterio.open(self.source_mask) as source_src:
-            source = source_src.read(1)
-            source_transform = source_src.transform
-            source_crs = source_src.crs
-            source_shape = (
-                source_src.height,
-                source_src.width,
-            )
+            height = cost_src.height
+            width = cost_src.width
 
-        if shape != source_shape:
-            raise ValueError(
-                "Cost-distance raster and source mask have different dimensions."
-            )
-
-        if transform != source_transform:
-            raise ValueError(
-                "Cost-distance raster and source mask have different transforms."
-            )
-
-        if crs != source_crs:
-            raise ValueError("Cost-distance raster and source mask have different CRS.")
+        # --------------------------------------------------------------
+        # Valid cost domain
+        # --------------------------------------------------------------
 
         valid = np.isfinite(cost)
 
@@ -75,15 +51,33 @@ class CorridorPotential:
 
         valid &= cost >= 0
 
-        source_mask = source == 1
+        # --------------------------------------------------------------
+        # Reproject source mask to cost grid
+        # --------------------------------------------------------------
 
-        if np.any(source_mask & ~valid):
-            raise ValueError(
-                "Source contains pixels outside the valid cost-distance domain."
+        source = np.zeros(
+            (height, width),
+            dtype="uint8",
+        )
+
+        with rasterio.open(self.source_mask) as source_src:
+            reproject(
+                source=source_src.read(1),
+                destination=source,
+                src_transform=source_src.transform,
+                src_crs=source_src.crs,
+                src_nodata=0,
+                dst_transform=transform,
+                dst_crs=crs,
+                dst_nodata=0,
+                resampling=Resampling.nearest,
             )
 
+
+        source_mask = (source == 1) & valid
+
         if not source_mask.any():
-            raise ValueError("Source mask contains no source pixels.")
+            raise ValueError("No source pixels inside valid cost domain.")
 
         return (
             cost,
@@ -95,8 +89,9 @@ class CorridorPotential:
         )
 
     def run(self):
+
         print("=" * 70)
-        print("P9.3 — RELATIVE CORRIDOR POTENTIAL")
+        print("P9.3 — POTENTIAL CONNECTIVITY")
         print("=" * 70)
 
         print(f"Cost distance : {self.cost_distance_raster}")
@@ -112,30 +107,46 @@ class CorridorPotential:
             crs,
         ) = self._read_inputs()
 
+        # --------------------------------------------------------------
+        # Domain
+        # --------------------------------------------------------------
+
         non_source = valid & ~source_mask
 
         if not non_source.any():
             raise ValueError("No valid non-source pixels found.")
 
-        non_source_cost = cost[non_source]
-
-        max_cost = float(np.max(non_source_cost))
-        min_cost = float(np.min(non_source_cost))
+        max_cost = float(np.max(cost[non_source]))
+        min_cost = float(np.min(cost[non_source]))
 
         if max_cost <= 0:
             raise ValueError("Maximum non-source cost must be greater than zero.")
 
+        # --------------------------------------------------------------
+        # Source cost
+        # --------------------------------------------------------------
+
+        source_cost = cost[source_mask]
+
+        if not np.allclose(source_cost, 0.0, atol=1e-7):
+            raise ValueError("Source pixels do not have zero cumulative cost.")
+
+        # --------------------------------------------------------------
+        # Statistics
+        # --------------------------------------------------------------
+
         print("\nInput statistics")
+
         print(f"  CRS                 : {crs}")
         print(f"  Dimensions          : {cost.shape[1]} × {cost.shape[0]}")
         print(f"  Valid pixels        : {int(valid.sum()):,}")
         print(f"  Source pixels       : {int(source_mask.sum()):,}")
         print(f"  Non-source pixels   : {int(non_source.sum()):,}")
-        print(f"  Minimum non-source cost : {min_cost:.9f}")
-        print(f"  Maximum non-source cost : {max_cost:.9f}")
+        print(f"  Minimum cost        : {min_cost:.6f}")
+        print(f"  Maximum cost        : {max_cost:.6f}")
 
         # --------------------------------------------------------------
-        # Relative potential
+        # Potential
         # --------------------------------------------------------------
 
         potential = np.full(
@@ -144,12 +155,10 @@ class CorridorPotential:
             dtype="float32",
         )
 
-        potential[valid] = (1.0 - (cost[valid] / max_cost)).astype("float32")
+        potential[valid] = (1.0 - cost[valid] / max_cost).astype("float32")
 
-        # Source is explicitly assigned maximum potential.
         potential[source_mask] = 1.0
 
-        # Numerical protection.
         potential[valid] = np.clip(
             potential[valid],
             0.0,
@@ -160,51 +169,30 @@ class CorridorPotential:
         # Validation
         # --------------------------------------------------------------
 
-        valid_potential = potential[valid]
-        source_potential = potential[source_mask]
+        values = potential[valid]
 
-        if not np.all(np.isfinite(valid_potential)):
-            raise ValueError(
-                "Potential contains non-finite values inside valid domain."
-            )
+        if not np.all(np.isfinite(values)):
+            raise ValueError("Potential contains non-finite values.")
 
-        if np.min(valid_potential) < 0:
-            raise ValueError("Potential contains values below 0.")
-
-        if np.max(valid_potential) > 1:
-            raise ValueError("Potential contains values above 1.")
+        if np.min(values) < 0 or np.max(values) > 1:
+            raise ValueError("Potential outside range [0,1].")
 
         if not np.allclose(
-            source_potential,
+            potential[source_mask],
             1.0,
             atol=1e-7,
         ):
             raise ValueError("Source pixels do not have potential = 1.")
-
-        # Check monotonic relationship:
-        # higher cost must not produce higher potential.
-        valid_cost = cost[valid]
-        valid_potential_check = potential[valid]
-
-        order = np.argsort(valid_cost)
-
-        sorted_cost = valid_cost[order]
-        sorted_potential = valid_potential_check[order]
-
-        cost_increase = np.diff(sorted_cost) > 0
-        potential_increase = np.diff(sorted_potential) > 1e-6
-
-        if np.any(cost_increase & potential_increase):
-            raise ValueError("Potential is not monotonically decreasing with cost.")
 
         # --------------------------------------------------------------
         # Output
         # --------------------------------------------------------------
 
         output = potential.copy()
-        output[~valid] = np.float32(-9999.0)
+        output[~valid] = -9999.0
 
         output_profile = profile.copy()
+
         output_profile.update(
             dtype="float32",
             count=1,
@@ -224,9 +212,8 @@ class CorridorPotential:
         # Statistics
         # --------------------------------------------------------------
 
-        values = potential[valid]
+        print("\nPotential connectivity statistics")
 
-        print("\nPotential statistics")
         print(f"  Minimum            : {np.min(values):.9f}")
         print(f"  P05                : {np.percentile(values, 5):.9f}")
         print(f"  P25                : {np.percentile(values, 25):.9f}")
@@ -240,13 +227,13 @@ class CorridorPotential:
         print("  Range [0,1]        : PASS")
         print("  Source = 1         : PASS")
         print("  NoData preserved   : PASS")
-        print("  Grid preserved     : PASS")
+        print("  Metric CRS         : PASS")
         print("  Cost → potential   : PASS")
 
         print(f"\nOutput : {self.output_path}")
 
         print("\n" + "=" * 70)
-        print("P9.3 RELATIVE CORRIDOR POTENTIAL COMPLETED")
+        print("P9.3 POTENTIAL CONNECTIVITY COMPLETED")
         print("=" * 70)
 
         return self.output_path

@@ -1,36 +1,26 @@
+import shutil
+import subprocess
 from pathlib import Path
-import heapq
 
-import numpy as np
 import rasterio
+from rasterio.enums import Resampling
+from rasterio.warp import calculate_default_transform, reproject
 
 
 class SourceBasedCostDistance:
     """
-    Calculate source-based cumulative movement cost using
-    an 8-neighbor raster graph and Dijkstra's algorithm.
+    P9.2 — Source-Based Cost Distance.
 
-    Edge cost:
-        mean(resistance_current, resistance_neighbor) * step_distance
+    GIS preparation:
+        EPSG:4326 → EPSG:32647
+        10 m × 10 m common grid
 
-    where:
-        step_distance = 1.0      for cardinal neighbors
-        step_distance = sqrt(2)  for diagonal neighbors
-
-    Source cells have cumulative cost = 0.
-    Invalid / NoData cells are excluded from the graph.
+    Numerical solver:
+        C++ multi-source Dijkstra
     """
 
-    NEIGHBORS = [
-        (-1, 0, 1.0),
-        (1, 0, 1.0),
-        (0, -1, 1.0),
-        (0, 1, 1.0),
-        (-1, -1, np.sqrt(2.0)),
-        (-1, 1, np.sqrt(2.0)),
-        (1, -1, np.sqrt(2.0)),
-        (1, 1, np.sqrt(2.0)),
-    ]
+    TARGET_CRS = "EPSG:32647"
+    TARGET_RESOLUTION = 10.0
 
     def __init__(
         self,
@@ -38,255 +28,248 @@ class SourceBasedCostDistance:
         source_mask: Path,
         output_path: Path,
     ):
-        self.resistance_raster = resistance_raster
-        self.source_mask = source_mask
-        self.output_path = output_path
+        self.resistance_raster = Path(resistance_raster)
+        self.source_mask = Path(source_mask)
+        self.output_path = Path(output_path)
 
-        self.output_path.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
+        self.root = Path(__file__).resolve().parents[2]
 
-    def _read_inputs(self):
-        with rasterio.open(self.resistance_raster) as resistance_src:
-            resistance = resistance_src.read(1).astype("float32")
-            resistance_profile = resistance_src.profile.copy()
-            resistance_transform = resistance_src.transform
-            resistance_crs = resistance_src.crs
-            resistance_shape = (
-                resistance_src.height,
-                resistance_src.width,
-            )
-            resistance_nodata = resistance_src.nodata
+        self.tmp_dir = self.output_path.parent / "_tmp"
 
-        with rasterio.open(self.source_mask) as source_src:
-            source = source_src.read(1)
-            source_transform = source_src.transform
-            source_crs = source_src.crs
-            source_shape = (
-                source_src.height,
-                source_src.width,
-            )
+        self.tmp_resistance = self.tmp_dir / "resistance.tif"
 
-        if source_shape != resistance_shape:
-            raise ValueError(
-                "Source mask and resistance raster have different dimensions."
-            )
+        self.tmp_source = self.tmp_dir / "source.tif"
 
-        if source_transform != resistance_transform:
-            raise ValueError(
-                "Source mask and resistance raster have different transforms."
-            )
+        self.tmp_output = self.tmp_dir / "cost_distance.tif"
 
-        if source_crs != resistance_crs:
-            raise ValueError("Source mask and resistance raster have different CRS.")
+        self.cpp_executable = self.root / "build" / "cost_distance"
 
-        valid = np.isfinite(resistance)
-
-        if resistance_nodata is not None:
-            valid &= resistance != resistance_nodata
-
-        valid &= resistance >= 0
-        valid &= resistance <= 1
-
-        source_mask = source == 1
-
-        # Source must be completely inside the valid resistance domain.
-        invalid_source = source_mask & ~valid
-
-        if invalid_source.any():
-            raise ValueError(
-                "Source mask contains pixels outside the valid resistance domain."
-            )
-
-        source_count = int(source_mask.sum())
-        valid_count = int(valid.sum())
-
-        if source_count == 0:
-            raise ValueError("Source mask contains no source pixels.")
-
-        if valid_count == 0:
-            raise ValueError("Resistance raster contains no valid pixels.")
-
-        return (
-            resistance,
-            valid,
-            source_mask,
-            resistance_profile,
-            resistance_transform,
-            resistance_crs,
-            valid_count,
-            source_count,
-        )
-
-    def _dijkstra(
-        self,
-        resistance,
-        valid,
-        source_mask,
-    ):
-        height, width = resistance.shape
-
-        # Cumulative cost.
-        distance = np.full(
-            (height, width),
-            np.inf,
-            dtype=np.float64,
-        )
-
-        # Priority queue entries:
-        # (cumulative_cost, row, col)
-        heap = []
-
-        source_rows, source_cols = np.where(source_mask)
-
-        distance[source_rows, source_cols] = 0.0
-
-        for row, col in zip(source_rows, source_cols):
-            heapq.heappush(
-                heap,
-                (0.0, int(row), int(col)),
-            )
-
-        processed = 0
-
-        while heap:
-            current_cost, row, col = heapq.heappop(heap)
-
-            # Ignore stale queue entries.
-            if current_cost != distance[row, col]:
-                continue
-
-            processed += 1
-
-            for drow, dcol, step_distance in self.NEIGHBORS:
-                nrow = row + drow
-                ncol = col + dcol
-
-                if nrow < 0 or nrow >= height or ncol < 0 or ncol >= width:
-                    continue
-
-                if not valid[nrow, ncol]:
-                    continue
-
-                neighbor_resistance = resistance[nrow, ncol]
-                current_resistance = resistance[row, col]
-
-                edge_cost = (
-                    (current_resistance + neighbor_resistance) / 2.0 * step_distance
-                )
-
-                new_cost = current_cost + edge_cost
-
-                if new_cost < distance[nrow, ncol]:
-                    distance[nrow, ncol] = new_cost
-
-                    heapq.heappush(
-                        heap,
-                        (new_cost, nrow, ncol),
-                    )
-
-        print(f"  Processed pixels : {processed:,}")
-
-        return distance
+    # ============================================================
+    # Public API
+    # ============================================================
 
     def run(self):
-        print("=" * 70)
-        print("P9.2 — SOURCE-BASED COST DISTANCE")
-        print("=" * 70)
+        self._validate_inputs()
 
-        print(f"Resistance : {self.resistance_raster}")
-        print(f"Source     : {self.source_mask}")
-        print(f"Output     : {self.output_path}")
+        print("\nPreparing P9.2 metric grid...")
 
-        (
-            resistance,
-            valid,
-            source_mask,
-            profile,
-            transform,
-            crs,
-            valid_count,
-            source_count,
-        ) = self._read_inputs()
+        self._prepare_metric_grid()
 
-        print("\nInput statistics")
-        print(f"  CRS                 : {crs}")
-        print(f"  Dimensions          : {resistance.shape[1]} × {resistance.shape[0]}")
-        print(f"  Resolution          : {transform.a:.15f}")
-        print(f"  Valid pixels        : {valid_count:,}")
-        print(f"  Source pixels       : {source_count:,}")
-        print(f"  Source coverage     : {source_count / valid_count * 100:.3f}%")
+        self._validate_common_grid()
 
-        print("\nGraph configuration")
-        print("  Connectivity        : 8-neighbor")
-        print("  Algorithm           : Dijkstra")
-        print("  Cardinal distance   : 1.0")
-        print("  Diagonal distance   : sqrt(2)")
-        print("  Edge cost           : mean resistance × step distance")
+        self._run_cpp()
 
-        print("\nCalculating cumulative cost...")
+        self._copy_final_output()
 
-        distance = self._dijkstra(
-            resistance=resistance,
-            valid=valid,
-            source_mask=source_mask,
-        )
+        self._validate_output()
 
-        valid_distance = distance[valid]
+        print("\nP9.2 completed.")
+        print(f"Output: {self.output_path}")
 
-        if not np.isfinite(valid_distance).all():
-            unreachable = int((~np.isfinite(distance) & valid).sum())
-            raise ValueError(
-                f"{unreachable:,} valid pixels are unreachable from the source."
+    # ============================================================
+    # Validation
+    # ============================================================
+
+    def _validate_inputs(self):
+        if not self.resistance_raster.exists():
+            raise FileNotFoundError(
+                f"Resistance raster tidak ditemukan:\n{self.resistance_raster}"
             )
 
-        source_distance = distance[source_mask]
+        if not self.source_mask.exists():
+            raise FileNotFoundError(f"Source mask tidak ditemukan:\n{self.source_mask}")
 
-        if not np.allclose(source_distance, 0.0):
-            raise ValueError("Source pixels do not have zero cumulative cost.")
+        if not self.cpp_executable.exists():
+            raise FileNotFoundError(
+                f"C++ executable tidak ditemukan:\n"
+                f"{self.cpp_executable}\n\n"
+                "Compile terlebih dahulu:\n"
+                "g++ -std=c++17 -O3 -march=native "
+                "src/cpp/corridor/cost_distance.cpp ..."
+            )
 
-        output = distance.astype("float32")
+    # ============================================================
+    # Metric grid preparation
+    # ============================================================
 
-        # NoData outside the valid ecological domain.
-        output[~valid] = np.float32(-9999.0)
+    def _prepare_metric_grid(self):
+        if self.tmp_dir.exists():
+            shutil.rmtree(self.tmp_dir)
 
-        output_profile = profile.copy()
-        output_profile.update(
-            dtype="float32",
-            count=1,
-            nodata=-9999.0,
-            compress="deflate",
-            predictor=3,
+        self.tmp_dir.mkdir(parents=True, exist_ok=True)
+
+        # --------------------------------------------------------
+        # Resistance defines the target grid
+        # --------------------------------------------------------
+
+        with rasterio.open(self.resistance_raster) as src:
+            transform, width, height = calculate_default_transform(
+                src.crs,
+                self.TARGET_CRS,
+                src.width,
+                src.height,
+                *src.bounds,
+                resolution=self.TARGET_RESOLUTION,
+            )
+
+            profile = src.profile.copy()
+
+            profile.update(
+                {
+                    "crs": self.TARGET_CRS,
+                    "transform": transform,
+                    "width": width,
+                    "height": height,
+                    "dtype": "float32",
+                    "nodata": -9999.0,
+                    "compress": "deflate",
+                    "predictor": 2,
+                    "tiled": True,
+                }
+            )
+
+            with rasterio.open(self.tmp_resistance, "w", **profile) as dst:
+                reproject(
+                    source=rasterio.band(src, 1),
+                    destination=rasterio.band(dst, 1),
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    src_nodata=src.nodata,
+                    dst_transform=transform,
+                    dst_crs=self.TARGET_CRS,
+                    dst_nodata=-9999.0,
+                    resampling=Resampling.bilinear,
+                )
+
+        # --------------------------------------------------------
+        # Source is warped onto EXACT resistance grid
+        # --------------------------------------------------------
+
+        with rasterio.open(self.source_mask) as src:
+            profile = src.profile.copy()
+
+            profile.update(
+                {
+                    "crs": self.TARGET_CRS,
+                    "transform": transform,
+                    "width": width,
+                    "height": height,
+                    "dtype": "uint8",
+                    "nodata": 0,
+                    "compress": "deflate",
+                    "tiled": True,
+                }
+            )
+
+            with rasterio.open(self.tmp_source, "w", **profile) as dst:
+                reproject(
+                    source=rasterio.band(src, 1),
+                    destination=rasterio.band(dst, 1),
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    src_nodata=0,
+                    dst_transform=transform,
+                    dst_crs=self.TARGET_CRS,
+                    dst_nodata=0,
+                    resampling=Resampling.nearest,
+                )
+
+        print(f"Target CRS     : {self.TARGET_CRS}")
+
+        print(f"Resolution     : {self.TARGET_RESOLUTION} m")
+
+        print(f"Dimensions     : {width} × {height}")
+
+        print(f"Resistance     : {self.tmp_resistance}")
+
+        print(f"Source         : {self.tmp_source}")
+
+    # ============================================================
+    # Common grid validation
+    # ============================================================
+
+    def _validate_common_grid(self):
+        with (
+            rasterio.open(self.tmp_resistance) as resistance,
+            rasterio.open(self.tmp_source) as source,
+        ):
+            if resistance.crs != source.crs:
+                raise RuntimeError("Resistance/source CRS berbeda.")
+
+            if resistance.width != source.width or resistance.height != source.height:
+                raise RuntimeError("Resistance/source dimensions berbeda.")
+
+            for a, b in zip(
+                resistance.transform,
+                source.transform,
+            ):
+                if abs(a - b) > 1e-9:
+                    raise RuntimeError("Resistance/source transform tidak identik.")
+
+            if (
+                abs(resistance.res[0] - 10.0) > 1e-6
+                or abs(resistance.res[1] - 10.0) > 1e-6
+            ):
+                raise RuntimeError("Resistance bukan grid 10 m.")
+
+        print("Common grid validation: PASS")
+
+    # ============================================================
+    # Run C++ solver
+    # ============================================================
+
+    def _run_cpp(self):
+        if self.tmp_output.exists():
+            self.tmp_output.unlink()
+
+        command = [
+            str(self.cpp_executable),
+            "--resistance",
+            str(self.tmp_resistance),
+            "--source",
+            str(self.tmp_source),
+            "--output",
+            str(self.tmp_output),
+        ]
+
+        print("\nRunning C++ Dijkstra...\n")
+
+        subprocess.run(
+            command,
+            check=True,
         )
 
-        with rasterio.open(
+    # ============================================================
+    # Copy final output
+    # ============================================================
+
+    def _copy_final_output(self):
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if self.output_path.exists():
+            self.output_path.unlink()
+
+        shutil.copy2(
+            self.tmp_output,
             self.output_path,
-            "w",
-            **output_profile,
-        ) as dst:
-            dst.write(output, 1)
-
-        finite_values = output[valid]
-
-        print("\nOutput statistics")
-        print(f"  Minimum cost       : {np.min(finite_values):.6f}")
-        print(f"  P05                : {np.percentile(finite_values, 5):.6f}")
-        print(f"  P25                : {np.percentile(finite_values, 25):.6f}")
-        print(f"  Median             : {np.median(finite_values):.6f}")
-        print(f"  P75                : {np.percentile(finite_values, 75):.6f}")
-        print(f"  P95                : {np.percentile(finite_values, 95):.6f}")
-        print(f"  Maximum cost       : {np.max(finite_values):.6f}")
-        print(
-            f"  Source min/max     : "
-            f"{np.min(source_distance):.6f} / "
-            f"{np.max(source_distance):.6f}"
         )
 
-        print(f"\nOutput : {self.output_path}")
+    # ============================================================
+    # Output validation
+    # ============================================================
 
-        print("\n" + "=" * 70)
-        print("P9.2 SOURCE-BASED COST DISTANCE COMPLETED")
-        print("=" * 70)
+    def _validate_output(self):
+        with rasterio.open(self.output_path) as src:
+            if src.crs.to_epsg() != 32647:
+                raise RuntimeError(f"Output CRS salah: {src.crs}")
 
-        return self.output_path
+            if abs(src.res[0] - 10.0) > 1e-6 or abs(src.res[1] - 10.0) > 1e-6:
+                raise RuntimeError(f"Output resolution salah: {src.res}")
+
+            if src.nodata != -9999.0:
+                raise RuntimeError(f"Output NoData salah: {src.nodata}")
+
+            if src.count != 1:
+                raise RuntimeError("Output harus memiliki 1 band.")
+
+        print("Output validation: PASS")

@@ -13,6 +13,13 @@ class CompositeResistance:
         "distance_to_water": "distance_to_water_resistance.tif",
     }
 
+    # DEFAULT_WEIGHTS = {
+    #     "elevation": 0.11,
+    #     "slope": 0.17,
+    #     "landcover": 0.43,
+    #     "ndvi": 0.29,
+    # }
+
     DEFAULT_WEIGHTS = {
         "elevation": 0.08,
         "slope": 0.12,

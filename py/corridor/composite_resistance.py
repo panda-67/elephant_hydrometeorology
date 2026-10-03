@@ -3,7 +3,7 @@ from pathlib import Path
 from src.corridor.composite_resistance import CompositeResistance
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 
 RESISTANCE_DIR = ROOT / "data" / "output_rasters" / "corridor" / "resistance"
 
