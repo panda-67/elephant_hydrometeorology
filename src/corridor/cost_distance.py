@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -42,6 +43,8 @@ class SourceBasedCostDistance:
 
         self.tmp_output = self.tmp_dir / "cost_distance.tif"
 
+        self.cpp_source = self.root / "src/cpp/corridor/cost_distance.cpp"
+
         self.cpp_executable = self.root / "build" / "cost_distance"
 
     # ============================================================
@@ -67,6 +70,73 @@ class SourceBasedCostDistance:
         print(f"Output: {self.output_path}")
 
     # ============================================================
+    # Compiling
+    # ============================================================
+
+    def _compile_cpp(self):
+        source = self.cpp_source
+        executable = self.cpp_executable
+
+        if not source.exists():
+            raise FileNotFoundError(f"C++ source tidak ditemukan:\n{source}")
+
+        executable.parent.mkdir(parents=True, exist_ok=True)
+
+        gxx = shutil.which("g++")
+        gdal_config = shutil.which("gdal-config")
+
+        if gxx is None:
+            raise RuntimeError("g++ tidak ditemukan di PATH.")
+
+        if gdal_config is None:
+            raise RuntimeError("gdal-config tidak ditemukan di PATH.")
+
+        cflags = subprocess.check_output(
+            [gdal_config, "--cflags"],
+            text=True,
+        ).split()
+
+        libs = subprocess.check_output(
+            [gdal_config, "--libs"],
+            text=True,
+        ).split()
+
+        conda_prefix = os.environ.get("CONDA_PREFIX")
+
+        if not conda_prefix:
+            raise RuntimeError("CONDA_PREFIX tidak ditemukan.")
+
+        command = [
+            gxx,
+            "-std=c++17",
+            "-O3",
+            "-march=native",
+            str(source),
+            *cflags,
+            *libs,
+            f"-Wl,-rpath,{conda_prefix}/lib",
+            "-o",
+            str(executable),
+        ]
+
+        print("Compile command:")
+        print(" ".join(command))
+
+        subprocess.run(
+            command,
+            check=True,
+        )
+
+        if not executable.exists():
+            raise RuntimeError(
+                f"Compilation selesai tetapi executable tidak ditemukan:\n{executable}"
+            )
+
+        executable.chmod(executable.stat().st_mode | 0o111)
+
+        print(f"C++ executable berhasil dibuat:\n{executable}")
+
+    # ============================================================
     # Validation
     # ============================================================
 
@@ -80,15 +150,21 @@ class SourceBasedCostDistance:
             raise FileNotFoundError(f"Source mask tidak ditemukan:\n{self.source_mask}")
 
         if not self.cpp_executable.exists():
-            raise FileNotFoundError(
-                f"C++ executable tidak ditemukan:\n"
-                f"{self.cpp_executable}\n\n"
-                "Compile terlebih dahulu:\n"
-                "g++ -std=c++17 -O3 -march=native "
-                "src/cpp/corridor/cost_distance.cpp ..."
-            )
+            print("C++ executable tidak ditemukan.")
+            print("Compiling cost-distance engine...")
+            self._compile_cpp()
 
-    # ============================================================
+        elif self.cpp_source.stat().st_mtime > self.cpp_executable.stat().st_mtime:
+            print("C++ source lebih baru daripada executable.")
+            print("Recompiling cost-distance engine...")
+            self._compile_cpp()
+
+        else:
+            print("C++ executable tersedia dan masih up-to-date.")
+            print(f"Using: {self.cpp_executable}")
+
+        # ============================================================
+
     # Metric grid preparation
     # ============================================================
 
