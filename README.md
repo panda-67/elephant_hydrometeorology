@@ -125,6 +125,132 @@ Cara Membuka di QGIS:
 3. Batas spasial makro wilayah hulu DAS akan terplot secara presisi di atas
    layer peta kerja Anda untuk kebutuhan kartografi lanjutan.
 
+## Research Questions
+
+1. Sejauh mana flood hazard meningkatkan _effective movement cost_ dan menurunkan
+   _potential connectivity_ pada lanskap Mila–Pidie Jaya?
+
+## Metods
+
+Baseline
+$$ R_0(x)=R_{ecological}(x) $$
+
+berasal dari literature-weighted resistance yang sekarang kita gunakan.
+
+Kemudian flood-adjusted:
+
+$$ R_f(x)=R_0(x)\times D(FH(x)) $$
+
+dengan \(D(FH)\) sebagai disturbance multiplier.
+
+## Results
+
+Pipeline final untuk analisis elephant_hydrometeorology.
+
+Prinsip utamanya:
+
+$$ \boxed{ Causal\ Evidence\ Tier \uparrow \Rightarrow Movement\ Cost \uparrow \Rightarrow Potential\ Connectivity \downarrow } $$
+
+Baseline tetap literature-weighted resistance, sementara causal_evidence_tier menjadi basis flood-related disturbance/hazard.
+
+Tiga output final:
+
+flood_exposed_connectivity.tif
+flood_adjusted_movement_cost.tif
+flood_induced_connectivity_loss.tif
+
+Dan kita akan menghindari multiplier arbitrer kecuali nanti memang ada justifikasi metodologis yang jelas.
+
+## Discussions
+
+Karena potential connectivity kita turunkan dari cumulative movement cost,
+kita dapat membandingkan:
+
+$$ PC_0 $$
+
+dengan
+
+$$ PC_f $$
+
+dan menghitung:
+
+$$ \Delta PC = PC_f-PC_0 $$
+
+atau:
+
+$$ ConnectivityLoss = \frac{PC_0-PC_f}{PC_0}\times100 $$
+
+Kemudian kita dapat menghasilkan raster baru:
+
+flood-induced connectivity loss
+
+Pipeline berikut menurut saya paling defensible:
+
+```text
+                  CAUSAL ANALYSIS
+
+                       │
+                       ▼
+              Flood hazard surface
+
+                       │
+                       │
+                       ▼
+
+CORRIDOR ─────► Baseline resistance
+ANALYSIS
+                       │
+                       │
+                       ▼
+          Flood-adjusted resistance
+
+                       │
+                ┌──────┴──────┐
+                ▼             ▼
+      cumulative cost     connectivity
+
+                │             │
+                ▼             ▼
+              ΔCost     ΔConnectivity
+```
+
+Output akhirnya:
+
+A. Flood-exposed connectivity
+$$ FEC = PC_0 \cap FH $$
+
+Menjawab:
+
+Di mana corridor potensial beririsan dengan flood hazard?
+
+B. Flood-induced movement-cost increase
+$$ \Delta Cost $$
+
+Menjawab:
+
+Seberapa besar flood hazard meningkatkan kesulitan pergerakan?
+
+C. Flood-induced connectivity loss
+$$ \Delta PC $$
+
+Menjawab:
+
+Seberapa besar connectivity potensial berkurang akibat flood hazard?
+
+Yang ketiga adalah produk analitis utama.
+
+## Conclusions
+
+```text
+“modeled flood-induced potential connectivity loss”
+```
+
+Dengan terminologi itu, analisis tetap kuat:
+
+> The analysis evaluates how flood-related vegetation and hydrological disturbance may alter the spatial configuration and relative accessibility of potential elephant habitat connectivity.
+
+Ini sudah cukup untuk membentuk satu bagian analisis yang solid tanpa mengubah corridor model menjadi model yang terlalu rumit.
+
 ## ⚖️ Lisensi & Integritas Data
 
 Seluruh metode ekstraksi metrik di dalam proyek ini dilengkapi dengan sistem

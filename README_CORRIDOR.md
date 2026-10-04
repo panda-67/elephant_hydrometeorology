@@ -6,6 +6,42 @@ Pipeline dirancang untuk menghasilkan ecological resistance surface dan source-b
 
 Seluruh runner dijalankan dari root repository menggunakan Python module execution:
 
+```text
+                 ENVIRONMENT
+                     │
+                     ▼
+          literature-weighted
+             resistance
+                     │
+                     ▼
+              resistance.tif
+                     │
+            ┌────────┴────────┐
+            │                 │
+            ▼                 ▼
+        Dijkstra          Circuit theory
+            │                 │
+            ▼                 ▼
+      cost distance       current flow
+      least-cost path     connectivity
+      corridor route      pinch points
+            │                 │
+            └────────┬────────┘
+                     ▼
+              comparative
+               analysis
+```
+
+Rumusnya:
+
+$$ P(x)=1-\frac{C(x)}{C_{max}} $$
+
+di mana:
+
+\(P(x)\) = corridor potential pada pixel \(x\)
+\(C(x)\) = cost distance hasil Dijkstra
+\(C_{max}\) = cost distance maksimum yang digunakan sebagai normalizer.
+
 ```bash
 python -m py.corridor.<module>
 ```

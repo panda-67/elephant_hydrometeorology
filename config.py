@@ -1,43 +1,99 @@
+from typing import Dict, List, Tuple
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List, Tuple
 
 
 class GEEConfig(BaseSettings):
-    # Meta Project (Nama variabel harus cocok dengan yang ada di kelas atau diizinkan lewat config)
+    # Meta Project
     PROJECT_ID: str = "default-project"
     OUTPUT_DIR: str = "./data/output_metrics"
 
-    # Atribut penampung tambahan agar pydantic mengenali variabel dari .env Anda
+    # Atribut penampung tambahan
     gee_project_id: str = "default-project"
     data_output_dir: str = "./data/output_metrics"
     log_dir: str = "./logs"
     debug_mode: str = "True"
 
-    # TIMELINE FORENSIK MULTI-FASE (Sesuai Cetak Biru Matriks Analisis)
+    # ============================================================
+    # TIMELINE FORENSIK MULTI-FASE
+    # ============================================================
+
     # 1. Baseline Fase
     F_BASELINE_START: str = "2020-01-01"
     F_BASELINE_END: str = "2020-12-31"
 
-    # 2. Pre-Event Fase (Akumulasi Degradasi Lahan)
+    # 2. Pre-Event Fase
     F_PRE_EVENT_START: str = "2025-07-01"
     F_PRE_EVENT_END: str = "2025-10-31"
 
-    # 3. Flood Event Fase (Puncak Hujan & Simulasi Limpasan)
+    # 3. Flood Event Fase
     F_FLOOD_EVENT_START: str = "2025-11-01"
     F_FLOOD_EVENT_END: str = "2025-11-30"
 
-    # 4. Post-Event Fase (Genangan Hilir & Sedimen)
+    # 4. Post-Event Fase
     F_POST_EVENT_START: str = "2025-12-01"
     F_POST_EVENT_END: str = "2026-01-15"
 
-    # Parameter Hidrologi (Skenario Curah Hujan Ekstrem Batas Atas)
+    # ============================================================
+    # PARAMETER HIDROLOGI
+    # ============================================================
+
     PEAK_RAINFALL_MM_DAY: float = 122.00
 
-    # Ambang Batas Saintifik (Thresholds)
+    # ============================================================
+    # AMBANG BATAS SAINTIFIK
+    # ============================================================
+
     CLOUD_PROB_THRESHOLD: int = 35
     NDVI_DEGRADATION_THRESHOLD: float = -0.1
+
     SATELLITE_MODE: str = "sentinel2"  # sentinel1, sentinel2, landsat
     USE_DEMNAS: bool = False
+
+    # ============================================================
+    # CAUSAL EVIDENCE → CORRIDOR RESISTANCE
+    # ============================================================
+    #
+    # causal_evidence_tier berasal dari SpatialCausalPipeline:
+    #
+    # Tier 0 = tidak ada qualifying disturbance evidence
+    # Tier 1 = vegetation degradation
+    # Tier 2 = post-event destruction
+    # Tier 3 = compound disturbance
+    # Tier 4 = hydrologically confirmed compound disturbance
+    #
+    # Factor digunakan untuk meningkatkan literature-weighted
+    # baseline resistance:
+    #
+    # adjusted_resistance =
+    #     baseline_resistance * causal_resistance_factor[tier]
+    #
+    # Tier 0 harus selalu 1.0 karena tidak boleh mengubah
+    # baseline resistance.
+    #
+    # Nilai ini merupakan evidence-weighted adjustment,
+    # bukan estimasi langsung perubahan perilaku gajah.
+    #
+
+    CAUSAL_RESISTANCE_FACTORS: Dict[int, float] = {
+        0: 1.00,
+        1: 1.10,
+        2: 1.20,
+        3: 1.40,
+        4: 1.60,
+    }
+
+    CAUSAL_TIER_NAMES: Dict[int, str] = {
+        0: "no_disturbance_evidence",
+        1: "vegetation_degradation",
+        2: "post_event_destruction",
+        3: "compound_disturbance",
+        4: "hydrologically_confirmed_compound_disturbance",
+    }
+
+    # ============================================================
+    # SPATIAL INPUT / DAS
+    # ============================================================
 
     das_pidie_plus: List[Tuple[float, float]] = [
         # (95.8514831, 5.1869573),  # Lhok Keutapang, Tangse
@@ -60,20 +116,23 @@ class GEEConfig(BaseSettings):
     # WWF/HydroSHEDS/v1/Basins/hybas_12
     OUTLET_COORDINATES: List[Tuple[float, float]] = das_meureudu + das_pidie_plus
 
-    # Menggunakan SettingsConfigDict bawaan Pydantic v2 untuk melonggarkan pembacaan .env
+    # ============================================================
+    # PYDANTIC SETTINGS
+    # ============================================================
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        extra="allow",  # <--- MENGIZINKAN INPUT EXTRA DARI .ENV AGAR TIDAK ERROR
-        case_sensitive=False,  # <--- Mengabaikan perbedaan huruf besar/kecil antara .env dan python
+        extra="allow",
+        case_sensitive=False,
     )
 
-    # Helper method untuk mengalihkan sinkronisasi parameter dinamis
     def __init__(self, **values):
         super().__init__(**values)
-        # Jika pydantic membaca 'gee_project_id' dari .env, timpa nilai PROJECT_ID utama
+
         if self.gee_project_id and self.gee_project_id != "default-project":
             self.PROJECT_ID = self.gee_project_id
+
         if self.data_output_dir:
             self.OUTPUT_DIR = self.data_output_dir
 
