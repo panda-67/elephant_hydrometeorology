@@ -117,15 +117,14 @@ Predictors yang digunakan:
 2. Slope
 3. Land cover
 4. NDVI
-
-`distance_to_water` tidak digunakan dalam model corridor.
+5. Distance to Water
 
 ### Elevation
 
 Sumber DEM:
 
 ```text
-COPERNICUS/DEM/GLO30_2024_1
+users/nandadata02/DEMNAS-ACEH
 ```
 
 Elevation diekspor pada target analysis grid 10 m.
@@ -142,6 +141,17 @@ Sumber:
 ESA WorldCover 2020
 ```
 
+### Distance to Water
+
+Sumber:
+
+```text
+WWF/HydroSHEDS/v1/FreeFlowingRivers
+```
+
+Distance to water dihitung berdasarkan jaringan sungai HydroSHEDS pada analysis domain.
+Jarak dihitung sebagai Euclidean distance dari setiap pixel terhadap fitur sungai terdekat.
+
 ### NDVI
 
 NDVI dihitung dari Sentinel-2 untuk periode yang ditentukan pada module predictor.
@@ -153,6 +163,7 @@ data/output_rasters/corridor/
 ├── corridor_elevation.tif
 ├── corridor_slope.tif
 ├── corridor_landcover_worldcover_2020.tif
+├── corridor_distance_to_water.tif
 └── corridor_ndvi.tif
 ```
 
@@ -252,6 +263,21 @@ higher slope → lower suitability
 
 WorldCover direklasifikasi menggunakan suitability lookup table.
 
+### Distance to Water
+
+Metode:
+
+```text
+inverse min-max
+```
+
+Interpretasi:
+
+```text
+closer to water → higher suitability
+farther from water → lower suitability
+```
+
 ### NDVI
 
 NDVI menggunakan percentile normalization:
@@ -270,6 +296,7 @@ data/output_rasters/corridor/normalized/
 ├── elevation_suitability.tif
 ├── slope_suitability.tif
 ├── landcover_suitability.tif
+├── distance_to_water_suitability.tif
 └── ndvi_suitability.tif
 ```
 
@@ -367,10 +394,9 @@ Predictor:
 elevation
 slope
 landcover
+distance_to_water
 NDVI
 ```
-
-Tidak ada `distance_to_water`.
 
 Output:
 
@@ -379,6 +405,7 @@ data/output_rasters/corridor/resistance/
 ├── elevation_resistance.tif
 ├── slope_resistance.tif
 ├── landcover_resistance.tif
+├── distance_to_water_resistance.tif
 └── ndvi_resistance.tif
 ```
 
@@ -445,12 +472,13 @@ literature-informed weighted
 Bobot:
 
 ```text
-elevation   = 0.11
-slope       = 0.17
-landcover   = 0.43
-NDVI        = 0.29
-────────────────────
-total       = 1.00
+elevation         = 0.08
+slope             = 0.12
+landcover         = 0.30
+distance_to_water = 030
+NDVI              = 0.20
+─────────────────────────
+total             = 1.00
 ```
 
 Formula:
@@ -458,10 +486,11 @@ Formula:
 ```text
 R =
 
-    0.11 × elevation resistance
-  + 0.17 × slope resistance
-  + 0.43 × landcover resistance
-  + 0.29 × NDVI resistance
+    0.08 × elevation resistance
+  + 0.12 × slope resistance
+  + 0.30 × landcover resistance
+  + 0.30 × distance_to_water resistance
+  + 0.20 × NDVI resistance
 ```
 
 Output:
@@ -470,8 +499,6 @@ Output:
 data/output_rasters/corridor/resistance/
 └── composite_resistance_literature_weighted.tif
 ```
-
-Tidak ada equal-weight scenario dalam pipeline utama.
 
 ---
 
@@ -499,8 +526,6 @@ minimum
 maximum
 percentiles
 mean
-valid pixel count
-coverage
 ```
 
 Tahap ini memastikan composite resistance valid sebelum digunakan sebagai cost surface.
@@ -574,6 +599,18 @@ Algorithm:
 Dijkstra
 ```
 
+### Implementasi Dijkstra
+
+Perhitungan Dijkstra diimplementasikan menggunakan **C++** untuk menangani
+propagasi _cumulative cost_ pada raster secara efisien.
+Python berperan sebagai _orchestration layer_ yang:
+
+- membaca input raster;
+- menyiapkan metric grid;
+- memanggil implementasi Dijkstra dalam C++;
+- menerima hasil _cumulative cost_; dan
+- menulis hasil ke GeoTIFF.
+
 Raster connectivity:
 
 ```text
@@ -613,7 +650,7 @@ Bukan:
 least-cost path
 ```
 
-karena pipeline tidak memiliki destination dataset.
+karena pipeline tidak memiliki _destination dataset_.
 
 ---
 
@@ -819,11 +856,11 @@ data/
 | Predictor resolution    | 10 m                                  |
 | Connectivity CRS        | EPSG:32647                            |
 | Connectivity resolution | 10 m                                  |
-| Elevation               | Copernicus GLO-30                     |
+| Elevation               | DEMNAS                                |
 | Slope                   | DEM-derived                           |
 | Land cover              | ESA WorldCover 2020                   |
 | Vegetation              | Sentinel-2 NDVI                       |
-| Distance to water       | Not used                              |
+| Distance to water       | HydroSHEDS                            |
 | Normalization           | Inverse min-max / P5–P95 / lookup     |
 | Resistance              | `1 - suitability`                     |
 | Composite predictors    | 4                                     |
@@ -867,6 +904,9 @@ Connectivity analysis
         10 m
 ```
 
-Pemisahan ini penting karena cumulative movement cost menggunakan jarak antar-pixel dalam satuan meter.
+Pemisahan ini penting karena cumulative movement cost menggunakan jarak
+antar-pixel dalam satuan meter.
 
-Dengan demikian pipeline dapat ditelusuri, setiap tahap dapat diverifikasi secara independen, dan perubahan pada input atau parameter dapat diperiksa sebelum memengaruhi tahap berikutnya.
+Dengan demikian pipeline dapat ditelusuri, setiap tahap dapat diverifikasi
+secara independen, dan perubahan pada input atau parameter dapat diperiksa
+sebelum memengaruhi tahap berikutnya.
