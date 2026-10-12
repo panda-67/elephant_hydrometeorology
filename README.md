@@ -133,6 +133,7 @@ Cara Membuka di QGIS:
 ## Metods
 
 Baseline
+
 $$ R_0(x)=R_{ecological}(x) $$
 
 berasal dari literature-weighted resistance yang sekarang kita gunakan.
@@ -149,9 +150,11 @@ Pipeline final untuk analisis elephant_hydrometeorology.
 
 Prinsip utamanya:
 
-$$ \boxed{ Causal\ Evidence\ Tier \uparrow \Rightarrow Movement\ Cost \uparrow \Rightarrow Potential\ Connectivity \downarrow } $$
+$$ \boxed{ Causal\ Evidence\ Tier \uparrow \Rightarrow Movement\ Cost \uparrow
+\Rightarrow Potential\ Connectivity \downarrow } $$
 
-Baseline tetap literature-weighted resistance, sementara causal_evidence_tier menjadi basis flood-related disturbance/hazard.
+Baseline tetap literature-weighted resistance, sementara
+`causal_evidence_tier` menjadi basis flood-related disturbance/hazard.
 
 Tiga output final:
 
@@ -159,7 +162,8 @@ flood_exposed_connectivity.tif
 flood_adjusted_movement_cost.tif
 flood_induced_connectivity_loss.tif
 
-Dan kita akan menghindari multiplier arbitrer kecuali nanti memang ada justifikasi metodologis yang jelas.
+Dan kita akan menghindari multiplier arbitrer kecuali nanti memang adalah
+justifikasi metodologis yang jelas.
 
 ## Discussions
 
@@ -217,6 +221,7 @@ ANALYSIS
 Output akhirnya:
 
 A. Flood-exposed connectivity
+
 $$ FEC = PC_0 \cap FH $$
 
 Menjawab:
@@ -224,6 +229,7 @@ Menjawab:
 Di mana corridor potensial beririsan dengan flood hazard?
 
 B. Flood-induced movement-cost increase
+
 $$ \Delta Cost $$
 
 Menjawab:
@@ -231,6 +237,7 @@ Menjawab:
 Seberapa besar flood hazard meningkatkan kesulitan pergerakan?
 
 C. Flood-induced connectivity loss
+
 $$ \Delta PC $$
 
 Menjawab:
@@ -241,15 +248,16 @@ Yang ketiga adalah produk analitis utama.
 
 ## Conclusions
 
-```text
-“modeled flood-induced potential connectivity loss”
-```
+> Modeled flood-induced potential connectivity loss
 
 Dengan terminologi itu, analisis tetap kuat:
 
-> The analysis evaluates how flood-related vegetation and hydrological disturbance may alter the spatial configuration and relative accessibility of potential elephant habitat connectivity.
+> The analysis evaluates how flood-related vegetation and hydrological
+> disturbance may alter the spatial configuration and relative accessibility
+> of potential elephant habitat connectivity.
 
-Ini sudah cukup untuk membentuk satu bagian analisis yang solid tanpa mengubah corridor model menjadi model yang terlalu rumit.
+Ini sudah cukup untuk membentuk satu bagian analisis yang solid tanpa mengubah
+corridor model menjadi model yang terlalu rumit.
 
 ## ⚖️ Lisensi & Integritas Data
 
@@ -258,3 +266,4 @@ pengaman ketat (Strict Guardrails). Jika terjadi kegagalan transmisi data,
 interupsi koneksi, atau ketidakcocokan nama band di sisi server GEE, aplikasi
 akan melempar ValueError secara jujur untuk menjaga integritas keaslian data
 forensik dari manipulasi angka gaib (magic numbers).
+$$
