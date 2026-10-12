@@ -165,6 +165,30 @@ flood_induced_connectivity_loss.tif
 Dan kita akan menghindari multiplier arbitrer kecuali nanti memang adalah
 justifikasi metodologis yang jelas.
 
+- Cost Distance / Corridor Potential → menunjukkan konektivitas berdasarkan
+akumulasi biaya pergerakan dari source.
+- Circuit Theory / Current Density → menunjukkan bagaimana konektivitas dapat
+tersebar melalui banyak jalur dan di mana arus terkonsentrasi.
+- Circuit Connectivity → memberikan ukuran konektivitas relatif yang berasal
+dari solusi jaringan Circuit Theory.
+
+### Status tahapan yang sudah disepakati
+
+| Tahap | Status | Hasil atau pekerjaan |
+| :--- | :--- | :--- |
+| Batas wilayah studi | Selesai | Irisan KHL_PP dengan wilayah studi Tangse–Meureudu |
+| Penyusunan prediktor | Selesai | Elevasi, slope, land cover, NDVI, dan jarak ke sungai |
+| Resistance surface | Selesai | composite_resistance_literature_weighted.tif |
+| Least-cost analysis | Selesai | Cost Distance dan Corridor Potential |
+| Analisis dampak banjir | Selesai | Resistance dan movement cost yang disesuaikan dengan causal evidence tier |
+| Perbandingan baseline–banjir | Selesai | Delta konektivitas, valid mask, dan laporan QA; 12.185.419 sel domain bersama, tanpa kenaikan tak terduga, konsistensi kehilangan PASS |
+| Circuit Theory baseline | Selesai secara komputasional | current_density.tif dan connectivity.tif |
+| Connectivity Evidence P90 | Selesai | Korelasi dan klasifikasi kesepakatan Corridor Potential–Circuit Connectivity |
+| Sensitivitas P65/P75/P90 | Hasil agregat tersedia | Perbandingan jumlah sel pada Class 0–3 tersedia; perlu memastikan raster dan JSON ketiga skenario tersimpan lengkap |
+| Sintesis spasial akhir | Belum tuntas | Peta kestabilan koridor, bottleneck, dan area prioritas |
+| Integrasi dampak banjir dengan bukti Circuit Theory | Belum tuntas | Menilai perubahan konektivitas dan aliran lintas-lanskap akibat gangguan banjir |
+| Interpretasi ekologis dan validasi | Belum tuntas | Menafsirkan koridor prioritas dan batasan inferensi |
+
 ## Discussions
 
 Karena potential connectivity kita turunkan dari cumulative movement cost,

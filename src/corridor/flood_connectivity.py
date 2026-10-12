@@ -267,6 +267,30 @@ class FloodConnectivity:
                     f"resolusi {self.TARGET_RESOLUTION} m."
                 )
 
+        # Baseline connectivity must match the authoritative metric grid.
+        with (
+            rasterio.open(self.baseline_cost_distance) as cost_ds,
+            rasterio.open(self.baseline_connectivity) as conn_ds,
+        ):
+            if conn_ds.crs != cost_ds.crs:
+                raise ValueError(
+                    "Baseline connectivity CRS tidak cocok dengan "
+                    "baseline cost distance: "
+                    f"{conn_ds.crs} != {cost_ds.crs}"
+                )
+
+            if conn_ds.width != cost_ds.width or conn_ds.height != cost_ds.height:
+                raise ValueError(
+                    "Dimensi baseline connectivity tidak cocok "
+                    "dengan baseline cost distance."
+                )
+
+            if conn_ds.transform != cost_ds.transform:
+                raise ValueError(
+                    "Transform baseline connectivity tidak cocok "
+                    "dengan baseline cost distance."
+                )
+
     # ============================================================
     # BASELINE GRID
     # ============================================================
@@ -537,16 +561,47 @@ class FloodConnectivity:
         """
 
         with rasterio.open(self.baseline_connectivity) as src:
-            baseline_connectivity = src.read(1)
+            baseline_connectivity = src.read(1).astype(np.float32)
+            baseline_nodata = src.nodata
 
         with rasterio.open(flood_connectivity_path) as src:
-            flood_connectivity = src.read(1)
+            flood_connectivity = src.read(1).astype(np.float32)
+            flood_nodata = src.nodata
 
-        valid = (
-            (baseline_connectivity != self.NODATA)
-            & (flood_connectivity != self.NODATA)
-            & np.isfinite(baseline_connectivity)
-            & np.isfinite(flood_connectivity)
+        if baseline_connectivity.shape != flood_connectivity.shape:
+            raise ValueError("Dimensi baseline dan flood connectivity berbeda.")
+
+        def valid_cells(data, nodata):
+            valid = np.isfinite(data)
+
+            if nodata is not None:
+                if np.isnan(nodata):
+                    valid &= ~np.isnan(data)
+                else:
+                    valid &= data != nodata
+
+            return valid
+
+        valid = valid_cells(baseline_connectivity, baseline_nodata) & valid_cells(
+            flood_connectivity, flood_nodata
+        )
+
+        if not np.any(valid):
+            raise RuntimeError(
+                "Tidak ada sel valid bersama untuk menghitung connectivity loss."
+            )
+
+        difference = baseline_connectivity[valid] - flood_connectivity[valid]
+
+        tolerance = 1e-6
+        unexpected_increase = difference < -tolerance
+
+        print("  Connectivity comparison QA:")
+        print(f"    Common valid cells       : {int(valid.sum()):,}")
+        print(f"    Unexpected increases    : {int(unexpected_increase.sum()):,}")
+        print(
+            "    Maximum connectivity increase: "
+            f"{max(0.0, float(-difference.min())):.8g}"
         )
 
         loss = np.full(
@@ -555,15 +610,9 @@ class FloodConnectivity:
             dtype=np.float32,
         )
 
-        loss[valid] = np.clip(
-            baseline_connectivity[valid] - flood_connectivity[valid],
-            0.0,
-            1.0,
-        )
-
-        # --------------------------------------------------------
-        # Source cells should have zero connectivity loss.
-        # --------------------------------------------------------
+        # Keep negative differences visible as zero loss, but report them
+        # above rather than silently treating them as expected behaviour.
+        loss[valid] = np.maximum(difference, 0.0)
 
         source_mask = self._reproject_to_reference(
             source_path=self.source_mask,
@@ -574,7 +623,6 @@ class FloodConnectivity:
         )
 
         source_cells = (source_mask > 0) & valid
-
         loss[source_cells] = 0.0
 
         output = self.output_dir / "flood_induced_connectivity_loss.tif"
