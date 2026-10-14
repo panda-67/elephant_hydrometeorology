@@ -283,6 +283,10 @@ Dengan terminologi itu, analisis tetap kuat:
 Ini sudah cukup untuk membentuk satu bagian analisis yang solid tanpa mengubah
 corridor model menjadi model yang terlalu rumit.
 
+> A bottleneck represents an area where elephant movement is theoretically more
+> likely to become concentrated because landscape connectivity converges through
+> that area.
+
 ## ⚖️ Lisensi & Integritas Data
 
 Seluruh metode ekstraksi metrik di dalam proyek ini dilengkapi dengan sistem
